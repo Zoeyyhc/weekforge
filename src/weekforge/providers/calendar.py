@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol, runtime_checkable
+
+from icalendar import Calendar as _ICalendar
 
 from weekforge.models import TimeBlock
 
@@ -29,3 +32,27 @@ class MockCalendarProvider:
 
     def get_busy_blocks(self, start: datetime, end: datetime) -> list[TimeBlock]:
         return [b for b in self._blocks if _overlaps(b, start, end)]
+
+
+class ICSCalendarProvider:
+    """Reads busy blocks from an iCalendar (.ics) file.
+
+    v1 reads from a local path. A future URL-backed variant (Google's secret
+    iCal address) can wrap this by fetching the bytes first.
+    """
+
+    def __init__(self, ics_path: str | Path) -> None:
+        self._path = Path(ics_path)
+
+    def get_busy_blocks(self, start: datetime, end: datetime) -> list[TimeBlock]:
+        calendar = _ICalendar.from_ical(self._path.read_bytes())
+        blocks: list[TimeBlock] = []
+        for event in calendar.walk("VEVENT"):
+            block = TimeBlock(
+                start=event.decoded("dtstart"),
+                end=event.decoded("dtend"),
+                label=str(event.get("summary", "Busy")),
+            )
+            if _overlaps(block, start, end):
+                blocks.append(block)
+        return blocks

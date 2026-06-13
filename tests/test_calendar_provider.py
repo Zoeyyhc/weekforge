@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from weekforge.models import TimeBlock
-from weekforge.providers.calendar import MockCalendarProvider
+from weekforge.providers.calendar import MockCalendarProvider, ICSCalendarProvider
 
 
 def _utc(y, m, d, h, mn=0):
@@ -34,3 +35,26 @@ def test_mock_empty_when_no_overlap():
     result = provider.get_busy_blocks(_utc(2026, 6, 15, 0), _utc(2026, 6, 16, 0))
 
     assert result == []
+
+
+FIXTURE = Path(__file__).parent / "fixtures" / "sample_calendar.ics"
+
+
+def test_ics_parses_event_in_range():
+    provider = ICSCalendarProvider(FIXTURE)
+
+    result = provider.get_busy_blocks(_utc(2026, 6, 15, 0), _utc(2026, 6, 16, 0))
+
+    assert len(result) == 1
+    assert result[0].label == "Team standup"
+    assert result[0].duration_minutes == 60
+    assert result[0].start == _utc(2026, 6, 15, 9)
+
+
+def test_ics_excludes_event_out_of_range():
+    provider = ICSCalendarProvider(FIXTURE)
+
+    result = provider.get_busy_blocks(_utc(2026, 6, 15, 0), _utc(2026, 6, 16, 0))
+
+    labels = [b.label for b in result]
+    assert "Out-of-range meeting" not in labels
