@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskDraft } from "@/lib/buildRequest";
@@ -36,5 +36,14 @@ describe("TaskRow", () => {
     render(<TaskRow draft={draft} onChange={vi.fn()} onRemove={onRemove} />);
     await user.click(screen.getByTestId("task-remove"));
     expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("emits an estimatedMinutes patch on input", async () => {
+    const onChange = vi.fn();
+    render(<TaskRow draft={{ ...draft, estimatedMinutes: "" }} onChange={onChange} onRemove={vi.fn()} />);
+    const input = screen.getByTestId("task-minutes-input") as HTMLInputElement;
+    // Use fireEvent to directly set value and trigger change
+    fireEvent.change(input, { target: { value: "45" } });
+    expect(onChange).toHaveBeenLastCalledWith({ estimatedMinutes: "45" });
   });
 });

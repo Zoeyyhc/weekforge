@@ -14,7 +14,9 @@ export function BusyBlockRow({
   return (
     <div className="flex items-center gap-2" data-testid="busy-block-row">
       <input
+        type="text"
         data-testid="busy-label-input"
+        aria-label="Commitment label"
         value={draft.label}
         onChange={(e) => onChange({ label: e.target.value })}
         placeholder="Commitment"
@@ -26,16 +28,16 @@ export function BusyBlockRow({
         value={draft.start}
         onChange={(e) => onChange({ start: e.target.value })}
         className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
-        aria-label="Start"
+        aria-label="Start time"
       />
-      <span className="text-xs text-slate-400">→</span>
+      <span className="text-xs text-slate-400" aria-hidden="true">→</span>
       <input
         data-testid="busy-end-input"
         type="datetime-local"
         value={draft.end}
         onChange={(e) => onChange({ end: e.target.value })}
         className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
-        aria-label="End"
+        aria-label="End time"
       />
       <button
         type="button"

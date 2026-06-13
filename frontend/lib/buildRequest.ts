@@ -31,11 +31,13 @@ export function buildRequest(
       estimated_minutes: Number(t.estimatedMinutes),
       priority: t.priority,
     })),
-    busy_blocks: busyBlocks.map((b) => ({
-      label: b.label.trim(),
-      start: new Date(b.start).toISOString(),
-      end: new Date(b.end).toISOString(),
-    })),
+    busy_blocks: busyBlocks.length
+      ? busyBlocks.map((b) => ({
+          label: b.label.trim(),
+          start: new Date(b.start).toISOString(),
+          end: new Date(b.end).toISOString(),
+        }))
+      : undefined,
     preferences: {
       workday_start_hour: Number(prefs.workdayStartHour),
       workday_end_hour: Number(prefs.workdayEndHour),

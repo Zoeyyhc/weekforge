@@ -16,7 +16,9 @@ export function TaskRow({
   return (
     <div className="flex items-center gap-2" data-testid="task-row">
       <input
+        type="text"
         data-testid="task-title-input"
+        aria-label="Task title"
         value={draft.title}
         onChange={(e) => onChange({ title: e.target.value })}
         placeholder="Task title"
@@ -31,7 +33,7 @@ export function TaskRow({
         className="w-20 rounded-lg border border-slate-300 px-2 py-2 text-sm"
         aria-label="Estimated minutes"
       />
-      <span className="text-xs text-slate-400">min</span>
+      <span className="text-xs text-slate-400" aria-hidden="true">min</span>
       <select
         data-testid="task-priority-select"
         value={draft.priority}
