@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Generator, TypedDict
 
+from langgraph.types import Command
+
 from weekforge.debate.debaters import Council
 from weekforge.debate.graph import build_graph
 from weekforge.debate.state import DebateState
@@ -25,6 +27,7 @@ def run_debate(
     council: Council,
     max_rounds: int = 3,
     db_path: str = "weekforge.db",
+    resume_value: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     """Stream debate events as the council deliberates.
 
@@ -32,35 +35,49 @@ def run_debate(
       - {"type": "debate_event", "round": int, "speaker": str, "content": str, "event_type": str}
       - {"type": "interrupt", "interrupt_reason": str, "proposals": dict, "thread_id": str}
       - {"type": "done", "schedule": Schedule | None, "thread_id": str}
+
+    A 'done' event is emitted only when the run completes. If the run pauses for
+    human input, the final event is the 'interrupt' (no 'done').
+
+    Args:
+        resume_value: When provided, resume an interrupted run for this thread_id by
+            handing the value to the paused human_interrupt node. The graph reloads its
+            saved state from the checkpointer, so tasks/busy_blocks/preferences are ignored.
     """
     graph = build_graph(council=council, api_key=api_key, db_path=db_path)
 
-    initial_state = DebateState(
-        tasks=tasks,
-        busy_blocks=busy_blocks,
-        preferences=preferences,
-        max_rounds=max_rounds,
-        round_number=0,
-        proposals={},
-        critiques={},
-        converged=False,
-        interrupt_reason=None,
-        human_input=None,
-        arbiter_output=None,
-        validation_error=None,
-        schedule=None,
-        transcript=[],
-    )
-
     config = {"configurable": {"thread_id": thread_id}}
-    final_schedule: Schedule | None = None
 
-    for chunk in graph.stream(initial_state, config=config, stream_mode="updates"):
+    if resume_value is not None:
+        stream_input: Any = Command(resume=resume_value)
+    else:
+        stream_input = DebateState(
+            tasks=tasks,
+            busy_blocks=busy_blocks,
+            preferences=preferences,
+            max_rounds=max_rounds,
+            round_number=0,
+            proposals={},
+            critiques={},
+            converged=False,
+            interrupt_reason=None,
+            human_input=None,
+            arbiter_output=None,
+            validation_error=None,
+            schedule=None,
+            transcript=[],
+        )
+
+    final_schedule: Schedule | None = None
+    interrupted = False
+
+    for chunk in graph.stream(stream_input, config=config, stream_mode="updates"):
         # Handle LangGraph interrupt
         if "__interrupt__" in chunk:
             interrupts = chunk["__interrupt__"]
             if interrupts:
                 interrupt_value = interrupts[0].value
+                interrupted = True
                 yield {
                     "type": "interrupt",
                     "interrupt_reason": interrupt_value.get("interrupt_reason", "Human input needed."),
@@ -84,4 +101,5 @@ def run_debate(
             if "schedule" in node_output and node_output["schedule"] is not None:
                 final_schedule = node_output["schedule"]
 
-    yield {"type": "done", "schedule": final_schedule, "thread_id": thread_id}
+    if not interrupted:
+        yield {"type": "done", "schedule": final_schedule, "thread_id": thread_id}

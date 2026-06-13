@@ -123,3 +123,53 @@ def test_debate_result_shape():
         "transcript": [],
     }
     assert result["thread_id"] == "abc"
+
+
+def test_run_debate_resume_passes_command(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
+    """When resume_value is given, the graph is streamed a Command(resume=...) not the initial state."""
+    from langgraph.types import Command
+
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"finalize": {"schedule": Schedule(), "transcript": []}},
+        ])
+
+        list(run_debate(
+            tasks=sample_tasks,
+            busy_blocks=sample_busy,
+            preferences=sample_prefs,
+            thread_id="resume-thread",
+            api_key=mock_api_key,
+            council=mock_council,
+            resume_value="Prioritise the report.",
+        ))
+
+        stream_arg = mock_graph.stream.call_args.args[0]
+        assert isinstance(stream_arg, Command)
+        assert stream_arg.resume == "Prioritise the report."
+
+
+def test_run_debate_suppresses_done_after_interrupt(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
+    """A run that pauses at an interrupt must NOT also yield a 'done' event."""
+    from langgraph.types import Interrupt
+
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"__interrupt__": (Interrupt(value={"interrupt_reason": "Stalled", "proposals": {}}),)},
+        ])
+
+        events = list(run_debate(
+            tasks=sample_tasks,
+            busy_blocks=sample_busy,
+            preferences=sample_prefs,
+            thread_id="interrupt-thread",
+            api_key=mock_api_key,
+            council=mock_council,
+        ))
+
+    assert any(e["type"] == "interrupt" for e in events)
+    assert not any(e["type"] == "done" for e in events)
