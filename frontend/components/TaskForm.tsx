@@ -2,31 +2,42 @@
 
 import { useState } from "react";
 import { StartDebateRequest } from "@/lib/types";
+import {
+  buildRequest,
+  TaskDraft,
+  BusyBlockDraft,
+  PrefsDraft,
+} from "@/lib/buildRequest";
+import { TaskRow } from "@/components/TaskRow";
+import { BusyBlockRow } from "@/components/BusyBlockRow";
 
-const SAMPLE: StartDebateRequest = {
-  tasks: [
-    {
-      id: "t1",
-      title: "Write Q3 report",
-      estimated_minutes: 180,
-      priority: 1,
-      deadline: "2026-06-17T17:00:00+00:00",
-      category: "writing",
-    },
-    { id: "t2", title: "Review 5 pull requests", estimated_minutes: 90, priority: 2, category: "code" },
-    { id: "t3", title: "Prep demo slides", estimated_minutes: 120, priority: 2, category: "writing" },
-    { id: "t4", title: "1:1s with the team", estimated_minutes: 60, priority: 3, category: "meetings" },
-    { id: "t5", title: "Inbox zero", estimated_minutes: 45, priority: 4, category: "admin" },
-  ],
-  busy_blocks: [
-    { start: "2026-06-15T10:00:00+00:00", end: "2026-06-15T11:00:00+00:00", label: "Standup" },
-    { start: "2026-06-16T14:00:00+00:00", end: "2026-06-16T15:30:00+00:00", label: "Client call" },
-  ],
-  preferences: { workday_start_hour: 9, workday_end_hour: 18, max_focus_minutes_per_day: 360 },
-  max_rounds: 3,
-  // true = pause for you if the council stalls; false = Arbiter auto-decides.
-  require_human_on_stall: true,
+const SEED_TASKS: TaskDraft[] = [
+  { title: "Write Q3 report", estimatedMinutes: "180", priority: 1 },
+  { title: "Review 5 pull requests", estimatedMinutes: "90", priority: 2 },
+];
+const SEED_BLOCKS: BusyBlockDraft[] = [
+  { label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
+];
+const SEED_PREFS: PrefsDraft = {
+  workdayStartHour: "9",
+  workdayEndHour: "18",
+  maxFocusMinutes: "360",
 };
+
+const EMPTY_TASK: TaskDraft = { title: "", estimatedMinutes: "60", priority: 2 };
+const EMPTY_BLOCK: BusyBlockDraft = { label: "", start: "", end: "" };
+
+function validate(tasks: TaskDraft[], blocks: BusyBlockDraft[]): string | null {
+  const titled = tasks.filter((t) => t.title.trim() !== "");
+  if (titled.length === 0) return "Add at least one task with a title.";
+  if (titled.some((t) => !(Number(t.estimatedMinutes) > 0)))
+    return "Every task needs an estimate greater than 0 minutes.";
+  for (const b of blocks) {
+    if (b.start && b.end && new Date(b.end) <= new Date(b.start))
+      return "Each busy block must end after it starts.";
+  }
+  return null;
+}
 
 export function TaskForm({
   onStart,
@@ -35,42 +46,127 @@ export function TaskForm({
   onStart: (req: StartDebateRequest) => void;
   disabled?: boolean;
 }) {
-  const [json, setJson] = useState(JSON.stringify(SAMPLE, null, 2));
+  const [tasks, setTasks] = useState<TaskDraft[]>(SEED_TASKS);
+  const [blocks, setBlocks] = useState<BusyBlockDraft[]>(SEED_BLOCKS);
+  const [prefs, setPrefs] = useState<PrefsDraft>(SEED_PREFS);
   const [error, setError] = useState<string | null>(null);
 
+  function patchTask(i: number, patch: Partial<TaskDraft>) {
+    setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  }
+  function patchBlock(i: number, patch: Partial<BusyBlockDraft>) {
+    setBlocks((prev) => prev.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+  }
+
   function handleStart() {
-    let parsed: StartDebateRequest;
-    try {
-      parsed = JSON.parse(json) as StartDebateRequest;
-    } catch {
-      setError("That isn't valid JSON.");
-      return;
-    }
-    if (!Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
-      setError("Provide at least one task.");
+    const err = validate(tasks, blocks);
+    if (err) {
+      setError(err);
       return;
     }
     setError(null);
-    onStart(parsed);
+    // Drop tasks with empty titles before building the request.
+    const titledTasks = tasks.filter((t) => t.title.trim() !== "");
+    onStart(buildRequest(titledTasks, blocks, prefs));
   }
 
   return (
-    <div className="flex flex-col gap-3" data-testid="task-form">
-      <label className="text-sm font-medium text-slate-700">
-        Your week — tasks, fixed commitments, and preferences
-      </label>
-      <textarea
-        data-testid="task-form-input"
-        value={json}
-        onChange={(e) => setJson(e.target.value)}
-        spellCheck={false}
-        className="h-64 w-full rounded-lg border border-slate-300 p-3 font-mono text-xs"
-      />
+    <div className="flex flex-col gap-6" data-testid="task-form">
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Tasks</h2>
+          <button
+            type="button"
+            data-testid="add-task-btn"
+            onClick={() => setTasks((prev) => [...prev, { ...EMPTY_TASK }])}
+            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            + Add task
+          </button>
+        </div>
+        {tasks.map((t, i) => (
+          <TaskRow
+            key={i}
+            draft={t}
+            onChange={(patch) => patchTask(i, patch)}
+            onRemove={() => setTasks((prev) => prev.filter((_, j) => j !== i))}
+          />
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Busy blocks
+          </h2>
+          <button
+            type="button"
+            data-testid="add-block-btn"
+            onClick={() => setBlocks((prev) => [...prev, { ...EMPTY_BLOCK }])}
+            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            + Add block
+          </button>
+        </div>
+        {blocks.map((b, i) => (
+          <BusyBlockRow
+            key={i}
+            draft={b}
+            onChange={(patch) => patchBlock(i, patch)}
+            onRemove={() => setBlocks((prev) => prev.filter((_, j) => j !== i))}
+          />
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Preferences</h2>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-700">
+          <label className="flex items-center gap-1">
+            Workday
+            <input
+              data-testid="pref-start"
+              type="number"
+              min={0}
+              max={23}
+              value={prefs.workdayStartHour}
+              onChange={(e) => setPrefs({ ...prefs, workdayStartHour: e.target.value })}
+              className="w-16 rounded-lg border border-slate-300 px-2 py-1"
+              aria-label="Workday start hour"
+            />
+            –
+            <input
+              data-testid="pref-end"
+              type="number"
+              min={0}
+              max={23}
+              value={prefs.workdayEndHour}
+              onChange={(e) => setPrefs({ ...prefs, workdayEndHour: e.target.value })}
+              className="w-16 rounded-lg border border-slate-300 px-2 py-1"
+              aria-label="Workday end hour"
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            Max focus
+            <input
+              data-testid="pref-focus"
+              type="number"
+              min={0}
+              value={prefs.maxFocusMinutes}
+              onChange={(e) => setPrefs({ ...prefs, maxFocusMinutes: e.target.value })}
+              className="w-20 rounded-lg border border-slate-300 px-2 py-1"
+              aria-label="Max focus minutes per day"
+            />
+            min/day
+          </label>
+        </div>
+      </section>
+
       {error && (
         <p className="text-sm text-rose-600" data-testid="form-error">
           {error}
         </p>
       )}
+
       <button
         type="button"
         onClick={handleStart}
