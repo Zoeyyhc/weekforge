@@ -50,3 +50,4 @@ def test_preferences_defaults_and_validation():
 def test_schedule_defaults_empty():
     schedule = Schedule()
     assert schedule.blocks == []
+    assert schedule.week_start is None

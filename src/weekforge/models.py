@@ -55,4 +55,5 @@ class Preferences(BaseModel):
 class Schedule(BaseModel):
     """The council's output: a set of time blocks for the week."""
 
+    week_start: datetime | None = None
     blocks: list[TimeBlock] = Field(default_factory=list)

@@ -22,6 +22,8 @@ class JSONTaskProvider:
 
     def __init__(self, json_path: str | Path) -> None:
         self._path = Path(json_path)
+        if not self._path.exists():
+            raise FileNotFoundError(f"Tasks file not found: {self._path}")
 
     def get_tasks(self) -> list[Task]:
         raw = json.loads(self._path.read_text())

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -49,10 +49,21 @@ class ICSCalendarProvider:
         blocks: list[TimeBlock] = []
         for event in calendar.walk("VEVENT"):
             block = TimeBlock(
-                start=event.decoded("dtstart"),
-                end=event.decoded("dtend"),
+                start=self._normalise(event.decoded("dtstart")),
+                end=self._normalise(event.decoded("dtend")),
                 label=str(event.get("summary", "Busy")),
             )
             if _overlaps(block, start, end):
                 blocks.append(block)
         return blocks
+
+    @staticmethod
+    def _normalise(v: datetime | date) -> datetime:
+        """Convert a decoded iCalendar date/datetime value to a UTC-aware datetime."""
+        if not isinstance(v, datetime):
+            # Plain date (all-day event): treat as UTC midnight
+            return datetime(v.year, v.month, v.day, tzinfo=timezone.utc)
+        if v.tzinfo is None:
+            # Naive datetime: assume UTC
+            return v.replace(tzinfo=timezone.utc)
+        return v

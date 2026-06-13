@@ -45,10 +45,11 @@ def test_ics_parses_event_in_range():
 
     result = provider.get_busy_blocks(_utc(2026, 6, 15, 0), _utc(2026, 6, 16, 0))
 
-    assert len(result) == 1
-    assert result[0].label == "Team standup"
-    assert result[0].duration_minutes == 60
-    assert result[0].start == _utc(2026, 6, 15, 9)
+    labels = [b.label for b in result]
+    assert "Team standup" in labels
+    standup = next(b for b in result if b.label == "Team standup")
+    assert standup.duration_minutes == 60
+    assert standup.start == _utc(2026, 6, 15, 9)
 
 
 def test_ics_excludes_event_out_of_range():
@@ -58,3 +59,12 @@ def test_ics_excludes_event_out_of_range():
 
     labels = [b.label for b in result]
     assert "Out-of-range meeting" not in labels
+
+
+def test_ics_handles_allday_event():
+    provider = ICSCalendarProvider(FIXTURE)
+
+    result = provider.get_busy_blocks(_utc(2026, 6, 15, 0), _utc(2026, 6, 16, 0))
+
+    labels = [b.label for b in result]
+    assert "All-day event" in labels
