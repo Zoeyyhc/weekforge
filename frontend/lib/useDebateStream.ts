@@ -47,6 +47,7 @@ export function useDebateStream(base?: string): UseDebateStream {
       }
       es.onerror = () => {
         closeStream();
+        dispatch({ kind: "message", message: { type: "error", message: "Connection lost." } });
       };
     },
     [base, closeStream],
