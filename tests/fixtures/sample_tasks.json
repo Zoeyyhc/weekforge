@@ -1,0 +1,24 @@
+[
+  {
+    "id": "t1",
+    "title": "Draft quarterly report",
+    "estimated_minutes": 180,
+    "deadline": "2026-06-19T17:00:00+00:00",
+    "priority": 1,
+    "category": "writing"
+  },
+  {
+    "id": "t2",
+    "title": "Review two pull requests",
+    "estimated_minutes": 60,
+    "priority": 2,
+    "category": "code",
+    "depends_on": []
+  },
+  {
+    "id": "t3",
+    "title": "Reply to backlog emails",
+    "estimated_minutes": 45,
+    "category": "admin"
+  }
+]
