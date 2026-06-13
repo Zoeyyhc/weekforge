@@ -112,3 +112,19 @@ def test_full_hitl_cycle(client, anthropic_patch):
     assert any(e["type"] == "done" for e in events2)
     done = [e for e in events2 if e["type"] == "done"][0]
     assert done["schedule"] is not None
+
+
+def test_stall_auto_arbitrates_when_human_not_required(client, anthropic_patch):
+    """With require_human_on_stall=False, a non-converging council finishes unattended:
+    no interrupt, the Arbiter decides, and a 'done' with a schedule is emitted."""
+    body = {**SAMPLE_BODY, "require_human_on_stall": False}
+    thread_id = client.post("/debate", json=body).json()["thread_id"]
+
+    with anthropic_patch(converge=False):
+        resp = client.get(f"/debate/{thread_id}/stream")
+        events = _parse_sse(resp.text)
+
+    assert not any(e["type"] == "interrupt" for e in events)
+    done = [e for e in events if e["type"] == "done"]
+    assert len(done) == 1
+    assert done[0]["schedule"] is not None

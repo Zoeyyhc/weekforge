@@ -25,6 +25,11 @@ def _route_after_convergence_check(state: DebateState) -> str:
         return "arbitrate"
     if state.get("interrupt_reason"):
         return "human_interrupt"
+    # Stalled but no human required (require_human_on_stall=False): the Arbiter
+    # decides now. Without this the debate would loop gather→critique→gather
+    # forever, since round_number stays >= max_rounds and never converges.
+    if state["round_number"] >= state["max_rounds"]:
+        return "arbitrate"
     return "gather_proposals"
 
 
@@ -34,20 +39,23 @@ def _route_after_validate(state: DebateState) -> str:
     return "arbitrate"
 
 
-def build_graph(council: Council, api_key: str, db_path: str = "weekforge.db"):
+def build_graph(council: Council, api_key: str, db_path: str = "weekforge.db", require_human_on_stall: bool = True):
     """Build and compile the debate StateGraph with a SQLite checkpointer.
 
     Args:
         council: CrewAI Council (or MockCouncil for tests).
         api_key: Anthropic API key for convergence-check and validate nodes.
         db_path: SQLite database path. Use ":memory:" in tests.
+        require_human_on_stall: When True (default), a council that fails to converge
+            within max_rounds pauses for human input. When False, it auto-arbitrates
+            and the run finishes unattended.
 
     Returns:
         A compiled LangGraph graph ready for .invoke() / .stream().
     """
     gather_proposals = make_gather_proposals_node(council)
     critique = make_critique_node(council)
-    check_convergence = make_check_convergence_node(api_key)
+    check_convergence = make_check_convergence_node(api_key, require_human_on_stall)
     arbitrate = make_arbitrate_node(council)
     validate = make_validate_node(api_key)
 
@@ -73,7 +81,10 @@ def build_graph(council: Council, api_key: str, db_path: str = "weekforge.db"):
             "gather_proposals": "gather_proposals",
         },
     )
-    builder.add_edge("human_interrupt", "gather_proposals")
+    # After a human intervenes, the Arbiter decides immediately — no more
+    # debate rounds. This guarantees an exit: a stalled council pauses once
+    # for human input, then the human's guidance drives a final arbitration.
+    builder.add_edge("human_interrupt", "arbitrate")
     builder.add_edge("arbitrate", "validate")
     builder.add_conditional_edges(
         "validate",

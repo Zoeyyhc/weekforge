@@ -14,6 +14,13 @@ class StartDebateRequest(BaseModel):
     busy_blocks: list[TimeBlock] = Field(default_factory=list)
     preferences: Preferences = Field(default_factory=Preferences)
     max_rounds: int = Field(default=3, ge=1, le=10)
+    require_human_on_stall: bool = Field(
+        default=True,
+        description=(
+            "When True, a council that fails to converge within max_rounds pauses for "
+            "human input. When False, it auto-arbitrates and the run finishes unattended."
+        ),
+    )
 
 
 class StartDebateResponse(BaseModel):

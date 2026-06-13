@@ -24,6 +24,8 @@ const SAMPLE: StartDebateRequest = {
   ],
   preferences: { workday_start_hour: 9, workday_end_hour: 18, max_focus_minutes_per_day: 360 },
   max_rounds: 3,
+  // true = pause for you if the council stalls; false = Arbiter auto-decides.
+  require_human_on_stall: true,
 };
 
 export function TaskForm({

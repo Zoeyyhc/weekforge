@@ -93,8 +93,15 @@ def make_critique_node(council: Council):
     return critique
 
 
-def make_check_convergence_node(api_key: str):
-    """Return a LangGraph node that asks Claude Haiku if the proposals have converged."""
+def make_check_convergence_node(api_key: str, require_human_on_stall: bool = True):
+    """Return a LangGraph node that asks Claude Haiku if the proposals have converged.
+
+    Args:
+        require_human_on_stall: When True (default), a stalled council (no consensus
+            after max_rounds) sets interrupt_reason, which routes to human_interrupt.
+            When False, interrupt_reason is left unset and the router sends the stalled
+            debate straight to the Arbiter, so the run completes unattended.
+    """
     client = Anthropic(api_key=api_key)
 
     def check_convergence(state: DebateState) -> dict:
@@ -117,7 +124,8 @@ def make_check_convergence_node(api_key: str):
         converged = answer.startswith("yes")
 
         interrupt_reason: str | None = None
-        if not converged and state["round_number"] >= state["max_rounds"]:
+        stalled = not converged and state["round_number"] >= state["max_rounds"]
+        if stalled and require_human_on_stall:
             interrupt_reason = (
                 f"The council could not reach consensus after {state['max_rounds']} rounds. "
                 "Please review the proposals and provide guidance."

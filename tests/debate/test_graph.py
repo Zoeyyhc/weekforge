@@ -18,13 +18,21 @@ def test_route_converged_goes_to_arbitrate():
 
 
 def test_route_not_converged_no_interrupt_goes_to_gather():
-    state = {"converged": False, "interrupt_reason": None}
+    state = {"converged": False, "interrupt_reason": None, "round_number": 1, "max_rounds": 3}
     assert _route_after_convergence_check(state) == "gather_proposals"
 
 
 def test_route_stalled_goes_to_human_interrupt():
     state = {"converged": False, "interrupt_reason": "Council stalled after 3 rounds."}
     assert _route_after_convergence_check(state) == "human_interrupt"
+
+
+def test_route_stalled_without_human_goes_to_arbitrate():
+    """require_human_on_stall=False: check_convergence leaves interrupt_reason unset
+    even at max_rounds, so the router sends the stalled debate to the Arbiter rather
+    than looping back to gather_proposals forever."""
+    state = {"converged": False, "interrupt_reason": None, "round_number": 3, "max_rounds": 3}
+    assert _route_after_convergence_check(state) == "arbitrate"
 
 
 def test_route_valid_schedule_goes_to_finalize():
@@ -54,3 +62,18 @@ def test_build_graph_has_expected_nodes(mock_council, mock_api_key):
         "human_interrupt", "arbitrate", "validate", "finalize",
     }
     assert expected.issubset(node_names)
+
+
+def test_human_interrupt_routes_straight_to_arbitrate(mock_council, mock_api_key):
+    """After a human intervenes the Arbiter decides at once — no extra rounds.
+
+    This guarantees the debate terminates: a stall pauses once for human
+    input, then arbitrates. It must NOT loop back to gather_proposals.
+    """
+    graph = build_graph(council=mock_council, api_key=mock_api_key, db_path=":memory:")
+    targets = {
+        edge.target
+        for edge in graph.get_graph().edges
+        if edge.source == "human_interrupt"
+    }
+    assert targets == {"arbitrate"}

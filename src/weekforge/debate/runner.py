@@ -28,6 +28,7 @@ def run_debate(
     max_rounds: int = 3,
     db_path: str = "weekforge.db",
     resume_value: str | None = None,
+    require_human_on_stall: bool = True,
 ) -> Generator[dict[str, Any], None, None]:
     """Stream debate events as the council deliberates.
 
@@ -43,8 +44,15 @@ def run_debate(
         resume_value: When provided, resume an interrupted run for this thread_id by
             handing the value to the paused human_interrupt node. The graph reloads its
             saved state from the checkpointer, so tasks/busy_blocks/preferences are ignored.
+        require_human_on_stall: Forwarded to build_graph. When True (default), a stalled
+            council pauses for human input; when False, it auto-arbitrates unattended.
     """
-    graph = build_graph(council=council, api_key=api_key, db_path=db_path)
+    graph = build_graph(
+        council=council,
+        api_key=api_key,
+        db_path=db_path,
+        require_human_on_stall=require_human_on_stall,
+    )
 
     config = {"configurable": {"thread_id": thread_id}}
 

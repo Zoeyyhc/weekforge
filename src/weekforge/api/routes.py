@@ -53,6 +53,7 @@ def create_router(council: Council, api_key: str, db_path: str, sessions: Sessio
                     max_rounds=session.request.max_rounds,
                     db_path=db_path,
                     resume_value=resume_value,
+                    require_human_on_stall=session.request.require_human_on_stall,
                 ):
                     yield format_sse(event)
             except Exception as exc:  # surface engine errors to the client as an SSE frame
