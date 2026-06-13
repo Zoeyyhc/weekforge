@@ -46,6 +46,10 @@ export function useDebateStream(base?: string): UseDebateStream {
         });
       }
       es.onerror = () => {
+        // Only surface an error if this stream is still active — if closeStream()
+        // already ran (terminal frame received), sourceRef was nulled and this
+        // onerror is the browser's post-close notification; ignore it.
+        if (sourceRef.current !== es) return;
         closeStream();
         dispatch({ kind: "message", message: { type: "error", message: "Connection lost." } });
       };
@@ -56,9 +60,16 @@ export function useDebateStream(base?: string): UseDebateStream {
   const start = useCallback(
     async (request: StartDebateRequest) => {
       dispatch({ kind: "reset" });
-      const threadId = await startDebate(request, base);
-      threadRef.current = threadId;
-      openStream(threadId);
+      try {
+        const threadId = await startDebate(request, base);
+        threadRef.current = threadId;
+        openStream(threadId);
+      } catch (err) {
+        dispatch({
+          kind: "message",
+          message: { type: "error", message: err instanceof Error ? err.message : "Failed to start debate." },
+        });
+      }
     },
     [base, openStream],
   );
@@ -67,8 +78,15 @@ export function useDebateStream(base?: string): UseDebateStream {
     async (input: string) => {
       const threadId = threadRef.current;
       if (!threadId) return;
-      await sendIntervention(threadId, input, base);
-      openStream(threadId);
+      try {
+        await sendIntervention(threadId, input, base);
+        openStream(threadId);
+      } catch (err) {
+        dispatch({
+          kind: "message",
+          message: { type: "error", message: err instanceof Error ? err.message : "Failed to send intervention." },
+        });
+      }
     },
     [base, openStream],
   );

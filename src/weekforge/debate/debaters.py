@@ -28,6 +28,7 @@ class Council:
                 "Explain your reasoning in 2-3 sentences."
             ),
             expected_output="A proposed weekly schedule with task placements and a brief rationale.",
+            agent=agent,
         )
         crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
         result = crew.kickoff()
@@ -44,6 +45,7 @@ class Council:
                 "Be direct — this is a debate."
             ),
             expected_output="A specific critique of the proposals highlighting conflicts with your objective.",
+            agent=agent,
         )
         crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
         result = crew.kickoff()
@@ -61,6 +63,7 @@ class Council:
                 "Output ONLY the JSON array, no markdown fences, no explanation."
             ),
             expected_output="A JSON array of time block objects.",
+            agent=self.arbiter,
         )
         crew = Crew(agents=[self.arbiter], tasks=[task], process=Process.sequential, verbose=False)
         result = crew.kickoff()

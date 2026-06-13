@@ -21,7 +21,10 @@ def test_council_has_all_four_agents():
 
 
 def test_council_propose_calls_correct_agent():
-    with patch("weekforge.debate.debaters.Crew") as MockCrew:
+    with (
+        patch("weekforge.debate.debaters.CrewTask") as MockTask,
+        patch("weekforge.debate.debaters.Crew") as MockCrew,
+    ):
         mock_result = MagicMock()
         mock_result.raw = "Proposed: pack all deadlines first."
         MockCrew.return_value.kickoff.return_value = mock_result
@@ -37,10 +40,15 @@ def test_council_propose_calls_correct_agent():
 
         assert result == "Proposed: pack all deadlines first."
         MockCrew.return_value.kickoff.assert_called_once()
+        # task was constructed with the correct agent
+        assert MockTask.call_args.kwargs["agent"] is fake_agent
 
 
 def test_council_critique_calls_correct_agent():
-    with patch("weekforge.debate.debaters.Crew") as MockCrew:
+    with (
+        patch("weekforge.debate.debaters.CrewTask") as MockTask,
+        patch("weekforge.debate.debaters.Crew") as MockCrew,
+    ):
         mock_result = MagicMock()
         mock_result.raw = "Critique: ignores energy levels."
         MockCrew.return_value.kickoff.return_value = mock_result
@@ -55,10 +63,14 @@ def test_council_critique_calls_correct_agent():
         result = council.critique("EnergyGuardian", "proposals context")
 
         assert result == "Critique: ignores energy levels."
+        assert MockTask.call_args.kwargs["agent"] is fake_agent
 
 
 def test_council_arbitrate_calls_arbiter():
-    with patch("weekforge.debate.debaters.Crew") as MockCrew:
+    with (
+        patch("weekforge.debate.debaters.CrewTask") as MockTask,
+        patch("weekforge.debate.debaters.Crew") as MockCrew,
+    ):
         mock_result = MagicMock()
         mock_result.raw = '{"blocks": []}'
         MockCrew.return_value.kickoff.return_value = mock_result
@@ -73,6 +85,7 @@ def test_council_arbitrate_calls_arbiter():
         result = council.arbitrate("all proposals and critiques")
 
         assert result == '{"blocks": []}'
+        assert MockTask.call_args.kwargs["agent"] is fake_agent
 
 
 def test_council_propose_unknown_agent_raises():
