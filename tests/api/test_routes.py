@@ -13,14 +13,22 @@ SAMPLE_BODY = {
 
 
 def _parse_sse(text: str) -> list[dict]:
+    """Parse SSE frames into payload dicts, attaching the `event:` name as `_event`."""
     events = []
     for block in text.strip().split("\n\n"):
         if not block.strip():
             continue
-        data_lines = [l for l in block.splitlines() if l.startswith("data:")]
-        if not data_lines:
+        event_name = None
+        data_payload = None
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event_name = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data_payload = json.loads(line[len("data:"):].strip())
+        if data_payload is None:
             continue
-        events.append(json.loads(data_lines[0][len("data:"):].strip()))
+        data_payload["_event"] = event_name
+        events.append(data_payload)
     return events
 
 
@@ -62,6 +70,10 @@ def test_stream_emits_debate_events_and_done(client, anthropic_patch):
     done = [e for e in events if e["type"] == "done"]
     assert len(done) == 1
     assert done[0]["schedule"]["blocks"][0]["label"] == "Write report"
+
+    # The SSE event: line must match the payload type (frontend subscribes per type).
+    for e in events:
+        assert e["_event"] == e["type"]
 
 
 def test_intervene_unknown_thread_returns_404(client):
