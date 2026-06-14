@@ -24,11 +24,15 @@ def _utc(y, m, d, h=0, mn=0) -> datetime:
 class FakeGoogleCalendarClient:
     """In-memory stand-in. Records writes, returns seeded events on reads."""
 
-    def __init__(self, events: list[dict] | None = None) -> None:
+    def __init__(self, events: list[dict] | None = None, calendars: list[dict] | None = None) -> None:
         self._events: list[dict] = events or []
         self.inserted: list[dict] = []
         self.deleted_ranges: list[tuple] = []
         self._calendars: dict[str, str] = {}
+        self._calendar_list: list[dict] = calendars or []
+
+    def list_calendars(self) -> list[dict]:
+        return self._calendar_list
 
     def list_events(self, calendar_id: str, start: datetime, end: datetime) -> list[dict]:
         return [
@@ -148,6 +152,30 @@ class TestGoogleCalendarProvider:
         blocks = provider.get_busy_blocks(_utc(2026, 6, 15), _utc(2026, 6, 22))
 
         assert blocks[0].label == "Busy"
+
+    def test_defaults_to_primary_calendar_only(self):
+        client = FakeGoogleCalendarClient(events=[
+            _gcal_event("On primary", _utc(2026, 6, 15, 9), _utc(2026, 6, 15, 10), calendar_id="primary"),
+            _gcal_event("On work", _utc(2026, 6, 15, 11), _utc(2026, 6, 15, 12), calendar_id="work@x.com"),
+        ])
+        provider = GoogleCalendarProvider(client)  # no calendar_ids → primary only
+
+        blocks = provider.get_busy_blocks(_utc(2026, 6, 15), _utc(2026, 6, 22))
+
+        labels = [b.label for b in blocks]
+        assert labels == ["On primary"]
+
+    def test_reads_and_merges_multiple_calendars(self):
+        client = FakeGoogleCalendarClient(events=[
+            _gcal_event("On primary", _utc(2026, 6, 15, 9), _utc(2026, 6, 15, 10), calendar_id="primary"),
+            _gcal_event("On work", _utc(2026, 6, 16, 11), _utc(2026, 6, 16, 12), calendar_id="work@x.com"),
+        ])
+        provider = GoogleCalendarProvider(client, calendar_ids=["primary", "work@x.com"])
+
+        blocks = provider.get_busy_blocks(_utc(2026, 6, 15), _utc(2026, 6, 22))
+
+        labels = sorted(b.label for b in blocks)
+        assert labels == ["On primary", "On work"]
 
 
 # ---------------------------------------------------------------------------
