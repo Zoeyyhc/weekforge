@@ -19,7 +19,9 @@ def build_app() -> FastAPI:
     """Construct the production app from environment configuration."""
     api_key = os.environ["ANTHROPIC_API_KEY"]
     db_path = os.environ.get("WEEKFORGE_DB_PATH", "weekforge_api.db")
-    council = build_council(api_key)
+    from weekforge.debate.debaters import DEFAULT_MODEL
+    model = os.environ.get("WEEKFORGE_MODEL", DEFAULT_MODEL)
+    council = build_council(api_key, model=model)
     return create_app(council=council, api_key=api_key, db_path=db_path)
 
 

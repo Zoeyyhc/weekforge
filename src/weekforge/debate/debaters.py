@@ -78,9 +78,12 @@ class Council:
         return mapping[name]  # raises KeyError for unknown agents
 
 
-def build_council(api_key: str) -> Council:
+DEFAULT_MODEL = "anthropic/claude-haiku-4-5-20251001"
+
+
+def build_council(api_key: str, model: str = DEFAULT_MODEL) -> Council:
     """Build a Council with four Claude-backed CrewAI agents."""
-    llm = LLM(model="anthropic/claude-sonnet-4-6", api_key=api_key)
+    llm = LLM(model=model, api_key=api_key)
 
     deadline_hawk = Agent(
         role="Deadline Hawk",
