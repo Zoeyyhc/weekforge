@@ -11,6 +11,10 @@ describe("agentMeta", () => {
     expect(hawk.emoji).toBeTruthy();
   });
 
+  it("gives Focus Batcher and Arbiter distinct colours", () => {
+    expect(agentMeta("FocusBatcher").color).not.toBe(agentMeta("Arbiter").color);
+  });
+
   it("has metadata for Arbiter, Human and System speakers", () => {
     expect(agentMeta("Arbiter").label).toBe("Arbiter");
     expect(agentMeta("Human").label).toBe("You");
