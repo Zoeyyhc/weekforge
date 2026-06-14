@@ -14,7 +14,7 @@ export function DebateMessage({ event }: { event: DebateEventMsg }) {
   const meta = agentMeta(event.speaker);
   return (
     <div
-      className={`rounded-lg border p-3 ${meta.color} ${meta.ring}`}
+      className={`animate-rise-in rounded-lg border-l-2 p-3 ${meta.color} ${meta.ring}`}
       data-testid="debate-message"
     >
       <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
