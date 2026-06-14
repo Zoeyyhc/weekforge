@@ -67,3 +67,18 @@ class ICSCalendarProvider:
             # Naive datetime: assume UTC
             return v.replace(tzinfo=timezone.utc)
         return v
+
+
+@runtime_checkable
+class CalendarWriter(Protocol):
+    """A sink for writing time blocks back to a calendar."""
+
+    def write_blocks(
+        self,
+        blocks: list[TimeBlock],
+        week_start: datetime,
+        week_end: datetime,
+    ) -> int:
+        """Write blocks to the calendar, replacing any previously-written blocks
+        for the same [week_start, week_end) range. Returns the number written."""
+        ...
