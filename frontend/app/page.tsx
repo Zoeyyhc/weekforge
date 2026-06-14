@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useDebateStream } from "@/lib/useDebateStream";
 import { useGoogleCalendar } from "@/lib/useGoogleCalendar";
+import { useFreshActivity } from "@/lib/useFreshActivity";
 import { debateProgress } from "@/lib/debateProgress";
 import { TaskForm } from "@/components/TaskForm";
 import { DebateTimeline } from "@/components/DebateTimeline";
@@ -38,14 +39,29 @@ export default function Home() {
   const { state, maxRounds, start, intervene, reset } = useDebateStream();
   const google = useGoogleCalendar();
   const [imported, setImported] = useState<TimeBlock[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const weekStart = currentWeekStart();
   const showForm = state.status === "idle";
-  const progress = debateProgress(state.events, maxRounds, state.status);
+  // A speaker is "live" only briefly after their event; during the silent
+  // convergence/arbiter gaps the band/roster fall back to "deliberating…".
+  const speakingActive = useFreshActivity(state.events.length, 3500);
+  const progress = debateProgress(state.events, maxRounds, state.status, speakingActive);
 
   async function handleImport() {
-    if (google.calendars.length === 0) await google.loadCalendars();
-    const blocks = await google.importWeek(weekStart);
-    setImported(blocks);
+    setImporting(true);
+    setImportError(null);
+    try {
+      if (google.calendars.length === 0) await google.loadCalendars();
+      const blocks = await google.importWeek(weekStart);
+      setImported(blocks);
+    } catch (err) {
+      setImportError(
+        err instanceof Error ? err.message : "Could not import from Google Calendar.",
+      );
+    } finally {
+      setImporting(false);
+    }
   }
 
   const googleSlot = (
@@ -57,11 +73,21 @@ export default function Home() {
           disconnectUrl={googleDisconnectUrl()}
         />
         {google.connected && (
-          <button type="button" onClick={handleImport} className="text-sm font-medium text-amber underline">
-            Import this week
+          <button
+            type="button"
+            onClick={handleImport}
+            disabled={importing}
+            className="text-sm font-medium text-amber underline disabled:opacity-50"
+          >
+            {importing ? "Importing…" : "Import this week"}
           </button>
         )}
       </div>
+      {importError && (
+        <p className="text-sm text-rose-300" data-testid="import-error">
+          {importError}
+        </p>
+      )}
       {google.connected && google.calendars.length > 0 && (
         <CalendarPicker
           calendars={google.calendars}

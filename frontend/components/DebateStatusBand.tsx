@@ -1,6 +1,14 @@
-import { DebateProgress } from "@/lib/debateProgress";
+import { DebateProgress, AgentAction } from "@/lib/debateProgress";
 import { DebateStatus } from "@/lib/debateReducer";
 import { agentMeta } from "@/lib/agents";
+
+const PAST_ACTION: Record<AgentAction, string> = {
+  proposed: "proposed",
+  critiqued: "critiqued",
+  decided: "decided",
+  intervened: "intervened",
+  waiting: "spoke",
+};
 
 export function DebateStatusBand({
   progress,
@@ -9,14 +17,24 @@ export function DebateStatusBand({
   progress: DebateProgress;
   status: DebateStatus;
 }) {
-  const { currentRound, maxRounds, activeSpeaker } = progress;
+  const { currentRound, maxRounds, activeSpeaker, lastSpeaker, roster } = progress;
   const meta = activeSpeaker ? agentMeta(activeSpeaker) : null;
+
+  // During streaming the council works silently between bursts (convergence-check,
+  // arbitration). When no one is the live speaker but events exist, say so honestly
+  // rather than freezing on the last burst's speaker.
+  const deliberating = status === "streaming" && !activeSpeaker && lastSpeaker !== null;
+  const lastMeta = lastSpeaker ? agentMeta(lastSpeaker) : null;
+  const lastAction = lastSpeaker
+    ? roster.find((r) => r.speaker === lastSpeaker)?.action ?? "waiting"
+    : "waiting";
 
   let caption: string;
   if (status === "done") caption = "The council decided.";
   else if (status === "interrupted") caption = "Awaiting your call.";
   else if (status === "error") caption = "Something broke.";
   else if (meta) caption = `${meta.label} is speaking…`;
+  else if (deliberating) caption = "The council is deliberating…";
   else caption = "Convening the council…";
 
   return (
@@ -44,8 +62,15 @@ export function DebateStatusBand({
         aria-live="polite"
       >
         {meta && <span aria-hidden>{meta.emoji}</span>}
+        {!meta && deliberating && <span aria-hidden>⏳</span>}
         <span className="font-medium">{caption}</span>
-        {status === "streaming" && meta && (
+        {deliberating && lastMeta && (
+          <span className="text-xs text-muted">
+            (last: <span aria-hidden>{lastMeta.emoji}</span> {lastMeta.label}{" "}
+            {PAST_ACTION[lastAction]})
+          </span>
+        )}
+        {status === "streaming" && (meta || deliberating) && (
           <span className="ml-auto flex gap-1">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber" />
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber [animation-delay:150ms]" />

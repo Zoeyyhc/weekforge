@@ -56,4 +56,26 @@ describe("debateProgress", () => {
     const p = debateProgress([ev(9, "DeadlineHawk", "proposal")], 3, "streaming");
     expect(p.currentRound).toBe(3);
   });
+
+  it("suppresses the active speaker when speaking is not live (silent gap)", () => {
+    const events = [ev(1, "DeadlineHawk", "proposal"), ev(1, "FocusBatcher", "critique")];
+    // speakingActive=false models the gap after a burst while a silent node runs.
+    const p = debateProgress(events, 3, "streaming", false);
+    expect(p.activeSpeaker).toBeNull();
+    expect(p.roster.every((r) => !r.active)).toBe(true);
+    // last action is still reflected truthfully
+    expect(p.roster.find((r) => r.speaker === "FocusBatcher")!.action).toBe("critiqued");
+  });
+
+  it("still names the active speaker when speaking is live (default)", () => {
+    const events = [ev(1, "FocusBatcher", "critique")];
+    expect(debateProgress(events, 3, "streaming").activeSpeaker).toBe("FocusBatcher");
+    expect(debateProgress(events, 3, "streaming", true).activeSpeaker).toBe("FocusBatcher");
+  });
+
+  it("exposes the last speaker regardless of live state", () => {
+    const events = [ev(1, "DeadlineHawk", "proposal"), ev(1, "FocusBatcher", "critique")];
+    expect(debateProgress(events, 3, "streaming", false).lastSpeaker).toBe("FocusBatcher");
+    expect(debateProgress([], 3, "streaming").lastSpeaker).toBeNull();
+  });
 });

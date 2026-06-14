@@ -15,6 +15,7 @@ export interface DebateProgress {
   currentRound: number;
   maxRounds: number;
   activeSpeaker: Speaker | null;
+  lastSpeaker: Speaker | null;
   roster: RosterEntry[];
 }
 
@@ -34,11 +35,17 @@ export function debateProgress(
   events: DebateEventMsg[],
   maxRounds: number,
   status: DebateStatus,
+  // Whether a speaker counts as actively speaking *right now*. Events arrive in
+  // bursts and the council then works silently (convergence-check, arbiter), so a
+  // caller passes false once that gap exceeds a short window. Defaults to true.
+  speakingActive: boolean = true,
 ): DebateProgress {
   const last = events.length ? events[events.length - 1] : null;
   const rawRound = last ? last.round : 0;
   const currentRound = Math.min(Math.max(rawRound, 0), maxRounds);
-  const activeSpeaker = status === "streaming" && last ? last.speaker : null;
+  const lastSpeaker = last ? last.speaker : null;
+  const activeSpeaker =
+    status === "streaming" && speakingActive && last ? last.speaker : null;
 
   const latest = new Map<Speaker, DebateEventMsg>();
   for (const e of events) latest.set(e.speaker, e);
@@ -53,5 +60,5 @@ export function debateProgress(
     };
   });
 
-  return { currentRound, maxRounds, activeSpeaker, roster };
+  return { currentRound, maxRounds, activeSpeaker, lastSpeaker, roster };
 }
