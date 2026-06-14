@@ -79,7 +79,7 @@ describe("TaskForm", () => {
     expect(onStart).toHaveBeenCalledTimes(1);
     const req = onStart.mock.calls[0][0];
     // The seeded block is present but the empty one is dropped.
-    expect(req.busy_blocks).toBeDefined();
+    expect(req.busy_blocks).toHaveLength(1);
   });
 
   it("removing a middle task row does not corrupt the remaining rows", async () => {
