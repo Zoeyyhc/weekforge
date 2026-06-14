@@ -67,9 +67,32 @@ class GoogleIntegration:
         service = _build_service("calendar", "v3", credentials=creds)
         return RealGoogleCalendarClient(service)
 
-    def import_busy(self, week_start: datetime) -> list[TimeBlock]:
+    def list_calendars(self) -> list[dict]:
+        """Return the user's calendars for the import picker.
+
+        Excludes WeekForge's own output calendar (importing it would be
+        circular). Marks the primary calendar as selected-by-default.
+        """
+        result: list[dict] = []
+        for c in self._client().list_calendars():
+            if c.get("summary") == self._calendar_name:
+                continue
+            is_primary = bool(c.get("primary", False))
+            result.append(
+                {
+                    "id": c["id"],
+                    "summary": c.get("summary"),
+                    "primary": is_primary,
+                    "selected_by_default": is_primary,
+                }
+            )
+        return result
+
+    def import_busy(
+        self, week_start: datetime, calendar_ids: list[str] | None = None
+    ) -> list[TimeBlock]:
         week_end = week_start + timedelta(days=7)
-        provider = GoogleCalendarProvider(self._client())
+        provider = GoogleCalendarProvider(self._client(), calendar_ids=calendar_ids)
         return provider.get_busy_blocks(week_start, week_end)
 
     def export_schedule(
@@ -101,7 +124,12 @@ class UnconfiguredGoogleIntegration:
     def frontend_url(self) -> str:
         return os.environ.get("WEEKFORGE_FRONTEND_URL", "http://localhost:3000")
 
-    def import_busy(self, week_start: datetime) -> list[TimeBlock]:
+    def list_calendars(self) -> list[dict]:
+        raise RuntimeError("Google Calendar is not configured")
+
+    def import_busy(
+        self, week_start: datetime, calendar_ids: list[str] | None = None
+    ) -> list[TimeBlock]:
         raise RuntimeError("Google Calendar is not configured")
 
     def export_schedule(self, blocks: list[TimeBlock], week_start: datetime) -> tuple[int, str]:
