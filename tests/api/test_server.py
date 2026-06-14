@@ -20,6 +20,6 @@ def test_build_app_helper_returns_fastapi(monkeypatch):
     class _FakeCouncil:  # stand-in; build_app only needs an object to pass through
         pass
 
-    monkeypatch.setattr(srv, "build_council", lambda api_key: _FakeCouncil())
+    monkeypatch.setattr(srv, "build_council", lambda api_key, **kwargs: _FakeCouncil())
     app = srv.build_app()
     assert isinstance(app, FastAPI)
