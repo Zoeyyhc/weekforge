@@ -48,7 +48,14 @@ class FakeGoogleIntegration:
     def frontend_url(self) -> str:
         return "http://localhost:3000"
 
-    def import_busy(self, week_start: datetime) -> list[TimeBlock]:
+    def list_calendars(self) -> list[dict]:
+        return [
+            {"id": "primary@x", "summary": "me@x", "primary": True, "selected_by_default": True},
+            {"id": "holidays@x", "summary": "US Holidays", "primary": False, "selected_by_default": False},
+        ]
+
+    def import_busy(self, week_start: datetime, calendar_ids: list[str] | None = None) -> list[TimeBlock]:
+        self.last_calendar_ids = calendar_ids
         return self._busy
 
     def export_schedule(self, blocks: list[TimeBlock], week_start: datetime) -> tuple[int, str]:
@@ -160,6 +167,40 @@ def test_import_busy_returns_blocks(connected_client):
 def test_import_busy_requires_connected(unconnected_client):
     client, _ = unconnected_client
     resp = client.get("/calendar/google/busy?week_start=2026-06-15")
+    assert resp.status_code == 403
+
+
+def test_import_busy_passes_selected_calendar_ids(connected_client):
+    client, fake = connected_client
+    resp = client.get("/calendar/google/busy?week_start=2026-06-15&calendar_ids=a@x&calendar_ids=b@x")
+    assert resp.status_code == 200
+    assert fake.last_calendar_ids == ["a@x", "b@x"]
+
+
+def test_import_busy_defaults_calendar_ids_to_none(connected_client):
+    client, fake = connected_client
+    client.get("/calendar/google/busy?week_start=2026-06-15")
+    assert fake.last_calendar_ids is None
+
+
+# ---------------------------------------------------------------------------
+# /calendar/google/calendars
+# ---------------------------------------------------------------------------
+
+def test_list_calendars_returns_calendars(connected_client):
+    client, _ = connected_client
+    resp = client.get("/calendar/google/calendars")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "calendars" in data
+    summaries = [c["summary"] for c in data["calendars"]]
+    assert summaries == ["me@x", "US Holidays"]
+    assert data["calendars"][0]["selected_by_default"] is True
+
+
+def test_list_calendars_requires_connected(unconnected_client):
+    client, _ = unconnected_client
+    resp = client.get("/calendar/google/calendars")
     assert resp.status_code == 403
 
 

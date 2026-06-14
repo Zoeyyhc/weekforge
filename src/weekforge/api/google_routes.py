@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -40,12 +40,18 @@ def create_google_router(google) -> APIRouter:
         google.disconnect()
         return {"status": "disconnected"}
 
+    @router.get("/calendar/google/calendars")
+    def calendar_list():
+        if not google.is_connected():
+            raise HTTPException(status_code=403, detail="Not connected to Google Calendar")
+        return {"calendars": google.list_calendars()}
+
     @router.get("/calendar/google/busy")
-    def calendar_busy(week_start: str):
+    def calendar_busy(week_start: str, calendar_ids: list[str] | None = Query(default=None)):
         if not google.is_connected():
             raise HTTPException(status_code=403, detail="Not connected to Google Calendar")
         dt = datetime.fromisoformat(week_start).replace(tzinfo=timezone.utc)
-        blocks = google.import_busy(dt)
+        blocks = google.import_busy(dt, calendar_ids=calendar_ids)
         return {"busy_blocks": [b.model_dump(mode="json") for b in blocks]}
 
     @router.post("/calendar/google/export")
