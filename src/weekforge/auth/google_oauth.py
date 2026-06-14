@@ -26,8 +26,12 @@ def _client_config() -> dict:
     }
 
 
-def build_authorization_url() -> tuple[str, str]:
-    """Return (authorization_url, state) for the OAuth consent redirect."""
+def build_authorization_url() -> tuple[str, str, str | None]:
+    """Return (authorization_url, state, code_verifier) for the OAuth consent redirect.
+
+    code_verifier is set when requests-oauthlib adds PKCE automatically; must be
+    passed back to exchange_code so Google accepts the token request.
+    """
     flow = Flow.from_client_config(
         _client_config(),
         scopes=SCOPES,
@@ -38,17 +42,20 @@ def build_authorization_url() -> tuple[str, str]:
         include_granted_scopes="true",
         prompt="consent",
     )
-    return url, state
+    # requests-oauthlib >=1.4 auto-generates a PKCE verifier; retrieve it so
+    # the caller can pass it to exchange_code.
+    verifier: str | None = getattr(flow.oauth2session._client, "code_verifier", None)
+    return url, state, verifier
 
 
-def exchange_code(code: str) -> dict:
+def exchange_code(code: str, code_verifier: str | None = None) -> dict:
     """Exchange the callback auth code for credentials dict (access + refresh token)."""
     flow = Flow.from_client_config(
         _client_config(),
         scopes=SCOPES,
         redirect_uri=os.environ["GOOGLE_OAUTH_REDIRECT_URI"],
     )
-    flow.fetch_token(code=code)
+    flow.fetch_token(code=code, code_verifier=code_verifier)
     creds: Credentials = flow.credentials
     return {
         "token": creds.token,

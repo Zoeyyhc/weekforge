@@ -33,16 +33,19 @@ class GoogleIntegration:
         self._store = token_store
         self._calendar_name = calendar_name
         self._frontend_url = frontend_url
+        self._pending_code_verifier: str | None = None
 
     def is_connected(self) -> bool:
         return self._store.load() is not None
 
     def login_url(self) -> str:
-        url, _state = build_authorization_url()
+        url, _state, verifier = build_authorization_url()
+        self._pending_code_verifier = verifier
         return url
 
     def complete_login(self, code: str) -> None:
-        creds_dict = exchange_code(code)
+        creds_dict = exchange_code(code, code_verifier=self._pending_code_verifier)
+        self._pending_code_verifier = None
         self._store.save(creds_dict)
 
     def disconnect(self) -> None:
