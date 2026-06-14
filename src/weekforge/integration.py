@@ -40,6 +40,11 @@ class GoogleIntegration:
 
     def login_url(self) -> str:
         url, _state, verifier = build_authorization_url()
+        if not verifier:
+            # PKCE challenge is in the URL; without the matching verifier the
+            # callback would fail with Google's cryptic "Missing code verifier".
+            # Fail loudly here instead.
+            raise RuntimeError("OAuth flow did not produce a PKCE code_verifier")
         self._pending_code_verifier = verifier
         return url
 
