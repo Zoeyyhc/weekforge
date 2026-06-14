@@ -107,4 +107,18 @@ describe("useDebateStream", () => {
     expect(MockEventSource.instances).toHaveLength(2);
     expect(result.current.state.status).toBe("streaming");
   });
+
+  it("exposes maxRounds from the start request (default 3)", async () => {
+    const { result } = renderHook(() => useDebateStream("http://api"));
+    expect(result.current.maxRounds).toBe(3);
+
+    await act(async () => {
+      await result.current.start({
+        tasks: [{ id: "t1", title: "X", estimated_minutes: 30 }],
+        max_rounds: 5,
+      });
+    });
+
+    expect(result.current.maxRounds).toBe(5);
+  });
 });

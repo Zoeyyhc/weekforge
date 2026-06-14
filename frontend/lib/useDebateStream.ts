@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useReducer, useRef, useState } from "react";
 import {
   debateReducer,
   initialDebateState,
@@ -13,6 +13,7 @@ const EVENT_TYPES = ["debate_event", "interrupt", "done", "error"] as const;
 
 export interface UseDebateStream {
   state: DebateState;
+  maxRounds: number;
   start: (request: StartDebateRequest) => Promise<void>;
   intervene: (input: string) => Promise<void>;
   reset: () => void;
@@ -20,6 +21,7 @@ export interface UseDebateStream {
 
 export function useDebateStream(base?: string): UseDebateStream {
   const [state, dispatch] = useReducer(debateReducer, initialDebateState);
+  const [maxRounds, setMaxRounds] = useState(3);
   const sourceRef = useRef<EventSource | null>(null);
   const threadRef = useRef<string | null>(null);
 
@@ -60,6 +62,7 @@ export function useDebateStream(base?: string): UseDebateStream {
   const start = useCallback(
     async (request: StartDebateRequest) => {
       dispatch({ kind: "reset" });
+      setMaxRounds(request.max_rounds ?? 3);
       try {
         const threadId = await startDebate(request, base);
         threadRef.current = threadId;
@@ -95,7 +98,8 @@ export function useDebateStream(base?: string): UseDebateStream {
     closeStream();
     threadRef.current = null;
     dispatch({ kind: "reset" });
+    setMaxRounds(3);
   }, [closeStream]);
 
-  return { state, start, intervene, reset };
+  return { state, maxRounds, start, intervene, reset };
 }
