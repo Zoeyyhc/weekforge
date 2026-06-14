@@ -42,9 +42,9 @@ def build_authorization_url() -> tuple[str, str, str | None]:
         include_granted_scopes="true",
         prompt="consent",
     )
-    # requests-oauthlib >=1.4 auto-generates a PKCE verifier; retrieve it so
-    # the caller can pass it to exchange_code.
-    verifier: str | None = getattr(flow.oauth2session._client, "code_verifier", None)
+    # google-auth-oauthlib auto-generates a PKCE verifier on the Flow during
+    # authorization_url(); retrieve it so the caller can pass it to exchange_code.
+    verifier: str | None = flow.code_verifier
     return url, state, verifier
 
 
