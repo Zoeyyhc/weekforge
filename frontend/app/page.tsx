@@ -27,12 +27,39 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
   error: "Error",
 };
 
-// Monday of the current week, as YYYY-MM-DD (used for import + export window).
+// Monday of the current week, as YYYY-MM-DD, in local time.
 function currentWeekStart(): string {
+  const d = mondayLocal();
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+// Monday of the current week at local midnight, as a full ISO 8601 string with
+// the browser's UTC offset (e.g. "2026-06-15T00:00:00+10:00").
+// Used for Google Calendar API calls so the query window is anchored to local
+// midnight, not UTC midnight — otherwise in UTC+10 the window starts at 10 AM
+// Monday and misses early-morning events.
+function currentWeekStartLocal(): string {
+  const d = mondayLocal();
+  const off = -d.getTimezoneOffset(); // minutes ahead of UTC
+  const sign = off >= 0 ? "+" : "-";
+  const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const m = String(Math.abs(off) % 60).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` +
+    `T00:00:00${sign}${h}:${m}`
+  );
+}
+
+function mondayLocal(): Date {
   const d = new Date();
-  const day = (d.getUTCDay() + 6) % 7; // 0 = Monday
-  d.setUTCDate(d.getUTCDate() - day);
-  return d.toISOString().slice(0, 10);
+  const day = (d.getDay() + 6) % 7; // 0 = Monday, local time
+  d.setDate(d.getDate() - day);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 export default function Home() {
@@ -41,6 +68,7 @@ export default function Home() {
   const [imported, setImported] = useState<TimeBlock[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [importDone, setImportDone] = useState(false);
   const weekStart = currentWeekStart();
   const showForm = state.status === "idle";
   // A speaker is "live" only briefly after their event; during the silent
@@ -51,10 +79,12 @@ export default function Home() {
   async function handleImport() {
     setImporting(true);
     setImportError(null);
+    setImportDone(false);
     try {
       if (google.calendars.length === 0) await google.loadCalendars();
-      const blocks = await google.importWeek(weekStart);
+      const blocks = await google.importWeek(currentWeekStartLocal());
       setImported(blocks);
+      setImportDone(true);
     } catch (err) {
       setImportError(
         err instanceof Error ? err.message : "Could not import from Google Calendar.",
@@ -88,6 +118,11 @@ export default function Home() {
           {importError}
         </p>
       )}
+      {importDone && imported.length === 0 && !importError && (
+        <p className="text-sm text-muted" data-testid="import-empty">
+          No events found for the week of {weekStart}.
+        </p>
+      )}
       {google.connected && google.calendars.length > 0 && (
         <CalendarPicker
           calendars={google.calendars}
@@ -101,14 +136,14 @@ export default function Home() {
     </div>
   );
 
-  // Merge imported busy blocks into the request when starting.
+  // Merge imported busy blocks and the current week into the request when starting.
   function handleStart(req: StartDebateRequest) {
     const importedInputs: BusyBlockInput[] = imported.map((b) => ({
       start: b.start,
       end: b.end,
       label: b.label,
     }));
-    start({ ...req, busy_blocks: [...(req.busy_blocks ?? []), ...importedInputs] });
+    start({ ...req, week_start: weekStart, busy_blocks: [...(req.busy_blocks ?? []), ...importedInputs] });
   }
 
   return (
@@ -138,7 +173,7 @@ export default function Home() {
                 <WeekCalendar schedule={state.schedule} />
                 {google.connected && (
                   <ExportButton
-                    onExport={() => exportSchedule(`${weekStart}T00:00:00+00:00`, state.schedule!.blocks)}
+                    onExport={() => exportSchedule(currentWeekStartLocal(), state.schedule!.blocks)}
                   />
                 )}
               </div>

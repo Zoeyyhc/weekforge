@@ -2,7 +2,7 @@ import { TimeBlock } from "@/lib/types";
 
 function timeLabel(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
-    timeZone: "UTC", weekday: "short", hour: "2-digit", minute: "2-digit",
+    weekday: "short", hour: "2-digit", minute: "2-digit",
   });
 }
 

@@ -50,7 +50,9 @@ def create_google_router(google) -> APIRouter:
     def calendar_busy(week_start: str, calendar_ids: list[str] | None = Query(default=None)):
         if not google.is_connected():
             raise HTTPException(status_code=403, detail="Not connected to Google Calendar")
-        dt = datetime.fromisoformat(week_start).replace(tzinfo=timezone.utc)
+        dt = datetime.fromisoformat(week_start)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
         blocks = google.import_busy(dt, calendar_ids=calendar_ids)
         return {"busy_blocks": [b.model_dump(mode="json") for b in blocks]}
 
