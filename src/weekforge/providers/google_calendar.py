@@ -18,6 +18,7 @@ from weekforge.models import TimeBlock
 
 @runtime_checkable
 class GoogleCalendarClient(Protocol):
+    def list_calendars(self) -> list[dict]: ...
     def list_events(self, calendar_id: str, start: datetime, end: datetime) -> list[dict]: ...
     def find_calendar(self, name: str) -> str | None: ...
     def create_calendar(self, name: str) -> str: ...
@@ -37,6 +38,10 @@ class RealGoogleCalendarClient:
 
     def __init__(self, service) -> None:
         self._svc = service
+
+    def list_calendars(self) -> list[dict]:
+        resp = self._svc.calendarList().list().execute()
+        return resp.get("items", [])
 
     def list_events(self, calendar_id: str, start: datetime, end: datetime) -> list[dict]:
         resp = (
@@ -99,23 +104,28 @@ class RealGoogleCalendarClient:
 # ---------------------------------------------------------------------------
 
 class GoogleCalendarProvider:
-    """Reads busy blocks from the user's primary Google Calendar."""
+    """Reads busy blocks from one or more of the user's Google Calendars.
 
-    def __init__(self, client: GoogleCalendarClient) -> None:
+    Defaults to the primary calendar; pass calendar_ids to read (and merge)
+    events from a specific set of calendars.
+    """
+
+    def __init__(
+        self,
+        client: GoogleCalendarClient,
+        calendar_ids: list[str] | None = None,
+    ) -> None:
         self._client = client
+        self._calendar_ids = calendar_ids or ["primary"]
 
     def get_busy_blocks(self, start: datetime, end: datetime) -> list[TimeBlock]:
-        raw_events = self._client.list_events("primary", start, end)
         blocks: list[TimeBlock] = []
-        for e in raw_events:
-            label = e.get("summary") or "Busy"
-            blocks.append(
-                TimeBlock(
-                    start=e["start_dt"],
-                    end=e["end_dt"],
-                    label=label,
+        for calendar_id in self._calendar_ids:
+            for e in self._client.list_events(calendar_id, start, end):
+                label = e.get("summary") or "Busy"
+                blocks.append(
+                    TimeBlock(start=e["start_dt"], end=e["end_dt"], label=label)
                 )
-            )
         return blocks
 
 
