@@ -29,6 +29,7 @@ def run_debate(
     db_path: str = "weekforge.db",
     resume_value: str | None = None,
     require_human_on_stall: bool = True,
+    week_start: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     """Stream debate events as the council deliberates.
 
@@ -64,6 +65,7 @@ def run_debate(
             busy_blocks=busy_blocks,
             preferences=preferences,
             max_rounds=max_rounds,
+            week_start=week_start,
             round_number=0,
             proposals={},
             critiques={},

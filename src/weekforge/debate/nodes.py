@@ -54,7 +54,10 @@ def make_gather_proposals_node(council: Council):
 
     def gather_proposals(state: DebateState) -> dict:
         new_round = state["round_number"] + 1
+        week_label = state.get("week_start") or "this week"
         context = (
+            f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
+            f"All time block datetimes MUST fall within this week and MUST include a UTC offset (e.g. +00:00).\n\n"
             f"Tasks to schedule:\n{_fmt_tasks(state)}\n\n"
             f"Fixed commitments this week:\n{_fmt_busy(state)}\n\n"
             f"User preferences: {_fmt_prefs(state)}\n\n"
@@ -172,7 +175,10 @@ def make_arbitrate_node(council: Council):
             if state.get("validation_error")
             else ""
         )
+        week_label = state.get("week_start") or "this week"
         context = (
+            f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
+            f"All datetimes in the JSON output MUST fall within this week and MUST include a UTC offset.\n\n"
             f"Tasks:\n{_fmt_tasks(state)}\n\n"
             f"Proposals:\n{proposals_text}\n\n"
             f"Critiques:\n{critiques_text}"
@@ -202,6 +208,7 @@ def make_validate_node(api_key: str):
                 "role": "user",
                 "content": (
                     f"Task IDs available: {[t.id for t in state['tasks']]}\n"
+                    f"Week: {state.get('week_start') or 'not specified'} (all datetimes must be in this week with a UTC offset)\n"
                     f"Arbiter output:\n{state.get('arbiter_output', '')}\n\n"
                     "Extract a JSON array of time blocks. Each object must have: "
                     "start (ISO 8601 with timezone), end (ISO 8601 with timezone), "

@@ -82,6 +82,7 @@ export interface StartDebateRequest {
   busy_blocks?: BusyBlockInput[];
   preferences?: PreferencesInput;
   max_rounds?: number;
+  week_start?: string; // ISO date (YYYY-MM-DD) — tells the council which week to schedule
   // When true (default), a stalled council pauses for your input. Set false to
   // let the Arbiter decide automatically without waiting for a human.
   require_human_on_stall?: boolean;

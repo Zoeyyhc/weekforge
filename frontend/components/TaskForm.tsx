@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import React from "react";
 import { StartDebateRequest } from "@/lib/types";
 import {
   buildRequest,
@@ -44,9 +45,11 @@ function validate(tasks: TaskDraft[], blocks: BusyBlockDraft[]): string | null {
 export function TaskForm({
   onStart,
   disabled,
+  googleSlot,
 }: {
   onStart: (req: StartDebateRequest) => void;
   disabled?: boolean;
+  googleSlot?: React.ReactNode;
 }) {
   const [tasks, setTasks] = useState<TaskDraft[]>(SEED_TASKS);
   const [blocks, setBlocks] = useState<BusyBlockDraft[]>(SEED_BLOCKS);
@@ -111,6 +114,7 @@ export function TaskForm({
             + Add block
           </button>
         </div>
+        {googleSlot}
         {blocks.map((b, i) => (
           <BusyBlockRow
             key={b.id}

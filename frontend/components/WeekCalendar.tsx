@@ -20,7 +20,7 @@ export function WeekCalendar({ schedule }: { schedule: Schedule }) {
 
   if (schedule.blocks.length === 0) {
     return (
-      <p className="text-sm text-slate-500" data-testid="schedule-empty">
+      <p className="text-sm text-muted" data-testid="schedule-empty">
         The council produced an empty schedule.
       </p>
     );
@@ -29,14 +29,20 @@ export function WeekCalendar({ schedule }: { schedule: Schedule }) {
   const defaultDate = new Date(schedule.blocks[0].start);
 
   return (
-    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white" style={{ height: 600 }}>
+    <div
+      className="animate-forged rounded-xl border border-border overflow-hidden bg-surface"
+      style={{ height: 600 }}
+      data-testid="week-calendar"
+    >
       <style>{`
-        .rbc-today { background-color: transparent !important; }
-        .rbc-header { border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 0.75rem; font-weight: 600; padding: 6px 0; }
-        .rbc-time-header-content { border-left: 1px solid #e2e8f0; }
-        .rbc-timeslot-group { border-bottom: 1px solid #f1f5f9; }
-        .rbc-time-slot { color: #94a3b8; font-size: 0.7rem; }
-        .rbc-current-time-indicator { background-color: #6366f1; }
+        .rbc-time-view, .rbc-time-header, .rbc-time-content { border-color: #2a2620; }
+        .rbc-today { background-color: rgba(245,166,35,0.06) !important; }
+        .rbc-header { border-bottom: 1px solid #2a2620; color: #8a8578; font-size: 0.75rem; font-weight: 600; padding: 6px 0; }
+        .rbc-time-header-content { border-left: 1px solid #2a2620; }
+        .rbc-timeslot-group { border-bottom: 1px solid #1d2026; }
+        .rbc-time-slot { color: #6f6a5e; font-size: 0.7rem; }
+        .rbc-label { color: #8a8578; }
+        .rbc-current-time-indicator { background-color: #ff6b35; }
       `}</style>
       <Calendar
         localizer={localizer}
@@ -53,7 +59,7 @@ export function WeekCalendar({ schedule }: { schedule: Schedule }) {
             style: {
               backgroundColor: e.color,
               borderColor: e.color,
-              color: "#fff",
+              color: "#0f1115",
               borderRadius: "4px",
               fontSize: "0.75rem",
               fontWeight: 600,

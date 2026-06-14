@@ -14,6 +14,10 @@ class StartDebateRequest(BaseModel):
     busy_blocks: list[TimeBlock] = Field(default_factory=list)
     preferences: Preferences = Field(default_factory=Preferences)
     max_rounds: int = Field(default=3, ge=1, le=10)
+    week_start: str | None = Field(
+        default=None,
+        description="ISO date (YYYY-MM-DD) of the Monday to schedule. Tells the council which real-world dates to use.",
+    )
     require_human_on_stall: bool = Field(
         default=True,
         description=(
