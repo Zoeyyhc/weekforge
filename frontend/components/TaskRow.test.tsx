@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskDraft } from "@/lib/buildRequest";
 
-const draft: TaskDraft = { title: "Write report", estimatedMinutes: "120", priority: 2 };
+const draft: TaskDraft = { id: "test-t1", title: "Write report", estimatedMinutes: "120", priority: 2 };
 
 describe("TaskRow", () => {
   it("renders the draft values", () => {

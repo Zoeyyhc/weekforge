@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { buildRequest, TaskDraft, BusyBlockDraft, PrefsDraft } from "@/lib/buildRequest";
 
 const tasks: TaskDraft[] = [
-  { title: "Write Q3 report", estimatedMinutes: "180", priority: 1 },
-  { title: "Review PRs", estimatedMinutes: "90", priority: 2 },
+  { id: "d1", title: "Write Q3 report", estimatedMinutes: "180", priority: 1 },
+  { id: "d2", title: "Review PRs", estimatedMinutes: "90", priority: 2 },
 ];
 const blocks: BusyBlockDraft[] = [
-  { label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
+  { id: "d3", label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
 ];
 const prefs: PrefsDraft = {
   workdayStartHour: "9",
@@ -50,8 +50,8 @@ describe("buildRequest", () => {
 
   it("trims task titles and busy-block labels", () => {
     const req = buildRequest(
-      [{ title: "  Padded  ", estimatedMinutes: "30", priority: 3 }],
-      [{ label: "  Call  ", start: "2026-06-15T10:00", end: "2026-06-15T11:00" }],
+      [{ id: "d4", title: "  Padded  ", estimatedMinutes: "30", priority: 3 }],
+      [{ id: "d5", label: "  Call  ", start: "2026-06-15T10:00", end: "2026-06-15T11:00" }],
       prefs,
     );
     expect(req.tasks[0].title).toBe("Padded");

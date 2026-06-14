@@ -1,12 +1,14 @@
 import { StartDebateRequest } from "@/lib/types";
 
 export interface TaskDraft {
+  id: string;
   title: string;
   estimatedMinutes: string; // raw input value; parsed on build
   priority: number;
 }
 
 export interface BusyBlockDraft {
+  id: string;
   label: string;
   start: string; // datetime-local value, e.g. "2026-06-15T10:00"
   end: string;

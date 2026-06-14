@@ -5,6 +5,7 @@ import { BusyBlockRow } from "@/components/BusyBlockRow";
 import { BusyBlockDraft } from "@/lib/buildRequest";
 
 const draft: BusyBlockDraft = {
+  id: "test-b1",
   label: "Standup",
   start: "2026-06-15T10:00",
   end: "2026-06-15T11:00",

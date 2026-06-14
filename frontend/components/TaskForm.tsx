@@ -11,21 +11,23 @@ import {
 import { TaskRow } from "@/components/TaskRow";
 import { BusyBlockRow } from "@/components/BusyBlockRow";
 
+let _draftIdCounter = 0;
+function nextDraftId(): string {
+  return `draft-${++_draftIdCounter}`;
+}
+
 const SEED_TASKS: TaskDraft[] = [
-  { title: "Write Q3 report", estimatedMinutes: "180", priority: 1 },
-  { title: "Review 5 pull requests", estimatedMinutes: "90", priority: 2 },
+  { id: nextDraftId(), title: "Write Q3 report", estimatedMinutes: "180", priority: 1 },
+  { id: nextDraftId(), title: "Review 5 pull requests", estimatedMinutes: "90", priority: 2 },
 ];
 const SEED_BLOCKS: BusyBlockDraft[] = [
-  { label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
+  { id: nextDraftId(), label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
 ];
 const SEED_PREFS: PrefsDraft = {
   workdayStartHour: "9",
   workdayEndHour: "18",
   maxFocusMinutes: "360",
 };
-
-const EMPTY_TASK: TaskDraft = { title: "", estimatedMinutes: "60", priority: 2 };
-const EMPTY_BLOCK: BusyBlockDraft = { label: "", start: "", end: "" };
 
 function validate(tasks: TaskDraft[], blocks: BusyBlockDraft[]): string | null {
   const titled = tasks.filter((t) => t.title.trim() !== "");
@@ -67,7 +69,8 @@ export function TaskForm({
     setError(null);
     // Drop tasks with empty titles before building the request.
     const titledTasks = tasks.filter((t) => t.title.trim() !== "");
-    onStart(buildRequest(titledTasks, blocks, prefs));
+    const populatedBlocks = blocks.filter((b) => b.start !== "" && b.end !== "");
+    onStart(buildRequest(titledTasks, populatedBlocks, prefs));
   }
 
   return (
@@ -78,7 +81,7 @@ export function TaskForm({
           <button
             type="button"
             data-testid="add-task-btn"
-            onClick={() => setTasks((prev) => [...prev, { ...EMPTY_TASK }])}
+            onClick={() => setTasks((prev) => [...prev, { id: nextDraftId(), title: "", estimatedMinutes: "60", priority: 2 }])}
             className="text-sm font-medium text-slate-600 hover:text-slate-900"
           >
             + Add task
@@ -86,7 +89,7 @@ export function TaskForm({
         </div>
         {tasks.map((t, i) => (
           <TaskRow
-            key={i}
+            key={t.id}
             draft={t}
             onChange={(patch) => patchTask(i, patch)}
             onRemove={() => setTasks((prev) => prev.filter((_, j) => j !== i))}
@@ -102,7 +105,7 @@ export function TaskForm({
           <button
             type="button"
             data-testid="add-block-btn"
-            onClick={() => setBlocks((prev) => [...prev, { ...EMPTY_BLOCK }])}
+            onClick={() => setBlocks((prev) => [...prev, { id: nextDraftId(), label: "", start: "", end: "" }])}
             className="text-sm font-medium text-slate-600 hover:text-slate-900"
           >
             + Add block
@@ -110,7 +113,7 @@ export function TaskForm({
         </div>
         {blocks.map((b, i) => (
           <BusyBlockRow
-            key={i}
+            key={b.id}
             draft={b}
             onChange={(patch) => patchBlock(i, patch)}
             onRemove={() => setBlocks((prev) => prev.filter((_, j) => j !== i))}
