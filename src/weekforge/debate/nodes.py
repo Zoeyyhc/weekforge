@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from anthropic import Anthropic
 
 from weekforge.debate.debaters import Council
 from weekforge.debate.state import DEBATER_NAMES, DebateEvent, DebateState
-from weekforge.models import Schedule, TimeBlock
+from weekforge.models import Preferences, Schedule, Task, TimeBlock
 
 
 # ── Formatting helpers ──────────────────────────────────────────────────────
@@ -37,8 +38,12 @@ def _fmt_tasks(state: DebateState) -> str:
 
 
 def _fmt_busy(state: DebateState) -> str:
+    tz_name = state["preferences"].timezone
+    tz = ZoneInfo(tz_name) if tz_name else timezone.utc
     lines = [
-        f"- {b.label}: {b.start.strftime('%a %d %b %H:%M')}–{b.end.strftime('%H:%M')}"
+        f"- {b.label}: "
+        f"{b.start.astimezone(tz).strftime('%a %d %b %H:%M')}–"
+        f"{b.end.astimezone(tz).strftime('%H:%M')} local"
         for b in state["busy_blocks"]
     ]
     return "\n".join(lines) if lines else "No fixed commitments."
@@ -46,7 +51,13 @@ def _fmt_busy(state: DebateState) -> str:
 
 def _fmt_prefs(state: DebateState) -> str:
     p = state["preferences"]
-    return f"Work hours {p.workday_start_hour}:00–{p.workday_end_hour}:00, max focus {p.max_focus_minutes_per_day}min/day"
+    tz_clause = f" ({p.timezone})" if p.timezone else " (timezone unknown — assume UTC)"
+    return (
+        f"Work hours {p.workday_start_hour}:00–{p.workday_end_hour}:00 LOCAL TIME{tz_clause}, "
+        f"max focus {p.max_focus_minutes_per_day}min/day. "
+        f"All scheduled blocks MUST fall within this local time window. "
+        f"Output datetimes in UTC with the appropriate offset for {p.timezone or 'UTC'}."
+    )
 
 
 def _fmt_transcript_tail(state: DebateState, n: int = 12) -> str:

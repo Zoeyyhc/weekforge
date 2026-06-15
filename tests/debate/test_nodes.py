@@ -245,3 +245,23 @@ def test_fmt_tasks_escapes_backslashes_in_remark(base_state):
     }
     result = _fmt_tasks(state)
     assert r'note: "path\\to\\file"' in result
+
+
+def test_fmt_busy_converts_utc_to_local_timezone(base_state):
+    from weekforge.debate.nodes import _fmt_busy
+
+    state = {
+        **base_state,
+        "preferences": Preferences(timezone="Australia/Sydney"),
+        "busy_blocks": [
+            TimeBlock(
+                start=datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc),
+                end=datetime(2026, 6, 15, 13, 0, tzinfo=timezone.utc),
+                label="Meeting",
+            )
+        ],
+    }
+    result = _fmt_busy(state)
+    # Jun 2026 → AEST (UTC+10), so 12:00 UTC = 22:00 local
+    assert "22:00" in result
+    assert "local" in result
