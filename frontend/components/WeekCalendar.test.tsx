@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WeekCalendar } from "@/components/WeekCalendar";
 import { Schedule } from "@/lib/types";
@@ -67,16 +67,14 @@ describe("WeekCalendar — editable mode", () => {
     expect(onDelete).toHaveBeenCalledWith(0);
   });
 
-  it("calls onEditTime with block index, field, and new value", async () => {
+  it("calls onEditTime with block index, field, and new value", () => {
     const onEditTime = vi.fn();
     render(
       <WeekCalendar schedule={SCHEDULE} onEditTime={onEditTime} onDelete={vi.fn()} />,
     );
     const startInputs = document.querySelectorAll<HTMLInputElement>('input[type="time"]');
-    await userEvent.clear(startInputs[0]);
-    await userEvent.type(startInputs[0], "10:30");
-    // onEditTime called with (0, "start", "10:30")
-    expect(onEditTime).toHaveBeenCalledWith(0, "start", expect.stringContaining("10:30"));
+    fireEvent.change(startInputs[0], { target: { value: "10:30" } });
+    expect(onEditTime).toHaveBeenCalledWith(0, "start", "10:30");
   });
 
   it("does not render delete buttons or time inputs in read-only mode", () => {

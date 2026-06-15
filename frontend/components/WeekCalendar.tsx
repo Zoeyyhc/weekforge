@@ -78,7 +78,7 @@ export function WeekCalendar({
                         <>
                           <input
                             type="time"
-                            defaultValue={toTimeInput(e.start)}
+                            value={toTimeInput(e.start)}
                             onChange={(ev) => onEditTime!(e.blockIndex, "start", ev.target.value)}
                             className="border-0 border-b border-[#272430] bg-transparent font-mono text-[0.72rem] text-muted outline-none focus:border-ember"
                             aria-label={`Start time for ${e.title}`}
@@ -86,7 +86,7 @@ export function WeekCalendar({
                           <span className="text-border">–</span>
                           <input
                             type="time"
-                            defaultValue={toTimeInput(e.end)}
+                            value={toTimeInput(e.end)}
                             onChange={(ev) => onEditTime!(e.blockIndex, "end", ev.target.value)}
                             className="border-0 border-b border-[#272430] bg-transparent font-mono text-[0.72rem] text-muted outline-none focus:border-ember"
                             aria-label={`End time for ${e.title}`}

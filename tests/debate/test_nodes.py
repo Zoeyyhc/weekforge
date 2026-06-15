@@ -231,3 +231,17 @@ def test_fmt_tasks_escapes_quotes_in_remark(base_state):
     }
     result = _fmt_tasks(state)
     assert 'note: "Do \\"urgent\\" work first"' in result
+
+
+def test_fmt_tasks_escapes_backslashes_in_remark(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=60, priority=1,
+                 remark=r"path\to\file")
+        ],
+    }
+    result = _fmt_tasks(state)
+    assert r'note: "path\\to\\file"' in result
