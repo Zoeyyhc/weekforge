@@ -343,7 +343,14 @@ def make_validate_node(api_key: str):
                     "content": f"{error_msg}\nRetrying arbitration.",
                     "event_type": "validation_fail",
                 }
-                return {"schedule": None, "validation_error": error_msg, "transcript": [event]}
+                return {
+                    "schedule": None,
+                    "validation_error": error_msg,
+                    # Blocks parsed fine — keep them as the best-effort fallback.
+                    "best_effort_schedule": Schedule(blocks=blocks),
+                    "validation_attempts": state.get("validation_attempts", 0) + 1,
+                    "transcript": [event],
+                }
             return {"schedule": Schedule(blocks=blocks), "validation_error": None}
         except Exception as exc:
             error_msg = str(exc)
@@ -353,7 +360,12 @@ def make_validate_node(api_key: str):
                 "content": f"Schedule parsing failed: {error_msg}. Retrying arbitration.",
                 "event_type": "validation_fail",
             }
-            return {"schedule": None, "validation_error": error_msg, "transcript": [event]}
+            return {
+                "schedule": None,
+                "validation_error": error_msg,
+                "validation_attempts": state.get("validation_attempts", 0) + 1,
+                "transcript": [event],
+            }
 
     return validate
 

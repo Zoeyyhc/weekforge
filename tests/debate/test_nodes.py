@@ -226,6 +226,54 @@ def test_validate_sets_error_on_invalid_json(base_state, mock_api_key):
     assert result["transcript"][0]["event_type"] == "validation_fail"
 
 
+def test_validate_semantic_fail_returns_best_effort_and_increments_attempts(base_state, mock_api_key):
+    out_of_hours_json = (
+        '[{"start": "2026-06-15T02:00:00+00:00", "end": "2026-06-15T03:00:00+00:00",'
+        ' "label": "Night work", "task_id": "t1"}]'
+    )
+    state = {
+        **base_state,
+        "arbiter_output": out_of_hours_json,
+        "round_number": 1,
+        "preferences": Preferences(workday_start_hour=9, timezone=None),
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = out_of_hours_json
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is None
+    assert isinstance(result["best_effort_schedule"], Schedule)
+    assert len(result["best_effort_schedule"].blocks) == 1
+    assert result["validation_attempts"] == 1
+
+
+def test_validate_parse_fail_increments_attempts_without_best_effort(base_state, mock_api_key):
+    state = {**base_state, "arbiter_output": "garbage", "round_number": 1, "validation_attempts": 2}
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = "this is not valid json {"
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is None
+    assert result["validation_attempts"] == 3
+    # Parse failure must NOT overwrite a previously-captured best-effort schedule.
+    assert "best_effort_schedule" not in result
+
+
 # ── finalize ────────────────────────────────────────────────────────────────
 
 def test_finalize_returns_schedule_unchanged(base_state):
