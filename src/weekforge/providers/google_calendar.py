@@ -11,6 +11,24 @@ from typing import Protocol, runtime_checkable
 
 from weekforge.models import TimeBlock
 
+# ---------------------------------------------------------------------------
+# WeekForge marker — private extended property tagging our own events
+# ---------------------------------------------------------------------------
+
+WEEKFORGE_MARKER_KEY = "weekforge"
+WEEKFORGE_MARKER_VALUE = "1"
+WEEKFORGE_MARKER_QUERY = f"{WEEKFORGE_MARKER_KEY}={WEEKFORGE_MARKER_VALUE}"
+
+
+def _is_weekforge_event(event: dict) -> bool:
+    """True only if the event carries WeekForge's private marker.
+
+    Foreign events (the user's real meetings) can never be tagged through the
+    Google Calendar UI, so a True here uniquely identifies our own output.
+    """
+    private = (event.get("extendedProperties") or {}).get("private") or {}
+    return private.get(WEEKFORGE_MARKER_KEY) == WEEKFORGE_MARKER_VALUE
+
 
 # ---------------------------------------------------------------------------
 # Thin adapter protocol — the only Google API calls we make

@@ -10,6 +10,10 @@ from weekforge.models import TimeBlock
 from weekforge.providers.google_calendar import (
     GoogleCalendarProvider,
     GoogleCalendarWriter,
+    _is_weekforge_event,
+    WEEKFORGE_MARKER_KEY,
+    WEEKFORGE_MARKER_VALUE,
+    WEEKFORGE_MARKER_QUERY,
 )
 
 
@@ -280,3 +284,29 @@ class TestGoogleCalendarWriter:
         start = client.inserted[0]["start"]
         assert start["dateTime"] == "2026-06-15T09:00:00+00:00"
         assert "timeZone" not in start
+
+
+# ---------------------------------------------------------------------------
+# Marker detection
+# ---------------------------------------------------------------------------
+
+class TestWeekforgeMarker:
+    def test_constants_compose_query_string(self):
+        assert WEEKFORGE_MARKER_KEY == "weekforge"
+        assert WEEKFORGE_MARKER_VALUE == "1"
+        assert WEEKFORGE_MARKER_QUERY == "weekforge=1"
+
+    def test_detects_marked_event(self):
+        event = {"extendedProperties": {"private": {"weekforge": "1"}}}
+        assert _is_weekforge_event(event) is True
+
+    def test_unmarked_event_is_false(self):
+        assert _is_weekforge_event({"summary": "Real meeting"}) is False
+
+    def test_other_private_props_are_false(self):
+        event = {"extendedProperties": {"private": {"something": "else"}}}
+        assert _is_weekforge_event(event) is False
+
+    def test_handles_missing_or_null_extended_properties(self):
+        assert _is_weekforge_event({"extendedProperties": None}) is False
+        assert _is_weekforge_event({"extendedProperties": {"private": None}}) is False
