@@ -19,6 +19,7 @@ class Task(BaseModel):
     category: str | None = None  # used by the Focus Batcher for grouping
     depends_on: list[str] = Field(default_factory=list)
     preferred_days: list[Literal["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]] | None = None
+    remark: str | None = None  # planner's note to the council
 
 
 class TimeBlock(BaseModel):
