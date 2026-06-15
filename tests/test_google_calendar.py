@@ -310,3 +310,63 @@ class TestWeekforgeMarker:
     def test_handles_missing_or_null_extended_properties(self):
         assert _is_weekforge_event({"extendedProperties": None}) is False
         assert _is_weekforge_event({"extendedProperties": {"private": None}}) is False
+
+
+from weekforge.providers.google_calendar import RealGoogleCalendarClient
+
+
+# ---------------------------------------------------------------------------
+# Minimal fake googleapiclient service (chained .events().list()/.delete().execute())
+# ---------------------------------------------------------------------------
+
+class _FakeRequest:
+    def __init__(self, result=None, on_execute=None):
+        self._result = result
+        self._on_execute = on_execute
+
+    def execute(self):
+        if self._on_execute is not None:
+            self._on_execute()
+        return self._result
+
+
+class _FakeGoogleService:
+    def __init__(self, items):
+        self._items = items
+        self.deleted_ids: list[str] = []
+        self.list_kwargs: dict | None = None
+
+    def events(self):
+        return self
+
+    def list(self, **kwargs):
+        self.list_kwargs = kwargs
+        return _FakeRequest(result={"items": self._items})
+
+    def delete(self, calendarId, eventId):
+        return _FakeRequest(on_execute=lambda: self.deleted_ids.append(eventId))
+
+
+class TestRealClientDeleteGuard:
+    def test_guard_skips_unmarked_even_if_server_filter_bypassed(self):
+        marked = {"id": "wf-1", "extendedProperties": {"private": {"weekforge": "1"}}}
+        foreign = {"id": "real-1"}  # user's real meeting, no marker
+        svc = _FakeGoogleService(items=[marked, foreign])
+        client = RealGoogleCalendarClient(svc)
+
+        client.delete_events_in_range(
+            "primary", _utc(2026, 6, 15), _utc(2026, 6, 22),
+            private_extended_property=WEEKFORGE_MARKER_QUERY,
+        )
+
+        assert svc.deleted_ids == ["wf-1"]                       # foreign NOT deleted
+        assert svc.list_kwargs["privateExtendedProperty"] == WEEKFORGE_MARKER_QUERY
+
+    def test_no_filter_preserves_legacy_delete_all(self):
+        svc = _FakeGoogleService(items=[{"id": "a"}, {"id": "b"}])
+        client = RealGoogleCalendarClient(svc)
+
+        client.delete_events_in_range("primary", _utc(2026, 6, 15), _utc(2026, 6, 22))
+
+        assert svc.deleted_ids == ["a", "b"]
+        assert "privateExtendedProperty" not in svc.list_kwargs

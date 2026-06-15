@@ -41,7 +41,10 @@ class GoogleCalendarClient(Protocol):
     def find_calendar(self, name: str) -> str | None: ...
     def create_calendar(self, name: str) -> str: ...
     def insert_event(self, calendar_id: str, event: dict) -> str: ...
-    def delete_events_in_range(self, calendar_id: str, start: datetime, end: datetime) -> None: ...
+    def delete_events_in_range(
+        self, calendar_id: str, start: datetime, end: datetime,
+        private_extended_property: str | None = None,
+    ) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -93,18 +96,24 @@ class RealGoogleCalendarClient:
         result = self._svc.events().insert(calendarId=calendar_id, body=event).execute()
         return result["id"]
 
-    def delete_events_in_range(self, calendar_id: str, start: datetime, end: datetime) -> None:
-        resp = (
-            self._svc.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=start.isoformat(),
-                timeMax=end.isoformat(),
-                singleEvents=True,
-            )
-            .execute()
-        )
+    def delete_events_in_range(
+        self, calendar_id: str, start: datetime, end: datetime,
+        private_extended_property: str | None = None,
+    ) -> None:
+        list_kwargs: dict[str, object] = {
+            "calendarId": calendar_id,
+            "timeMin": start.isoformat(),
+            "timeMax": end.isoformat(),
+            "singleEvents": True,
+        }
+        if private_extended_property is not None:
+            list_kwargs["privateExtendedProperty"] = private_extended_property
+        resp = self._svc.events().list(**list_kwargs).execute()
         for event in resp.get("items", []):
+            # Defense in depth: even if the server-side filter is bypassed,
+            # NEVER delete an event that doesn't carry our marker.
+            if private_extended_property is not None and not _is_weekforge_event(event):
+                continue
             self._svc.events().delete(calendarId=calendar_id, eventId=event["id"]).execute()
 
     @staticmethod
