@@ -18,8 +18,8 @@ function nextDraftId(): string {
 }
 
 const SEED_TASKS: TaskDraft[] = [
-  { id: nextDraftId(), title: "Write Q3 report", estimatedMinutes: "180", priority: 1 },
-  { id: nextDraftId(), title: "Review 5 pull requests", estimatedMinutes: "90", priority: 2 },
+  { id: nextDraftId(), title: "Write Q3 report", estimatedMinutes: "180", priority: 1, hasDeadline: false, deadlineWeekday: "Fri" as const, preferredDays: [] },
+  { id: nextDraftId(), title: "Review 5 pull requests", estimatedMinutes: "90", priority: 2, hasDeadline: false, deadlineWeekday: "Fri" as const, preferredDays: [] },
 ];
 const SEED_BLOCKS: BusyBlockDraft[] = [
   { id: nextDraftId(), label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
@@ -84,7 +84,7 @@ export function TaskForm({
           <button
             type="button"
             data-testid="add-task-btn"
-            onClick={() => setTasks((prev) => [...prev, { id: nextDraftId(), title: "", estimatedMinutes: "60", priority: 2 }])}
+            onClick={() => setTasks((prev) => [...prev, { id: nextDraftId(), title: "", estimatedMinutes: "60", priority: 2, hasDeadline: false, deadlineWeekday: "Fri" as const, preferredDays: [] }])}
             className="text-sm font-medium text-slate-600 hover:text-slate-900"
           >
             + Add task
