@@ -12,6 +12,7 @@ const draft: TaskDraft = {
   hasDeadline: false,
   deadlineWeekday: "Fri",
   preferredDays: [],
+  remark: "",
 };
 
 describe("TaskRow", () => {

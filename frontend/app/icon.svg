@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="anvil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5a623"/>
+      <stop offset="78%" stop-color="#ff6b35"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="46%" r="55%">
+      <stop offset="0%" stop-color="#ff6b35" stop-opacity="0.4"/>
+      <stop offset="70%" stop-color="#ff6b35" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Dark forged tile so the mark reads on any browser-tab colour. -->
+  <rect width="100" height="100" rx="22" fill="#0f1115"/>
+  <rect width="100" height="100" rx="22" fill="url(#glow)"/>
+  <rect x="1" y="1" width="98" height="98" rx="21" fill="none" stroke="#ff6b35" stroke-opacity="0.25" stroke-width="1.5"/>
+
+  <!-- Anvil + rising spark, centred and padded within the tile. -->
+  <g transform="translate(50 51) scale(0.74) translate(-47.5 -44)">
+    <path d="M71 14 L73.4 22.6 L82 25 L73.4 27.4 L71 36 L68.6 27.4 L60 25 L68.6 22.6 Z" fill="#f5a623"/>
+    <path d="M26 38 L74 38 L74 49 L58 49 L58 61 L70 62 L70 74 L30 74 L30 62 L42 61 L42 49 L26 49 L13 45.5 Z"
+      fill="url(#anvil)" stroke="#ff6b35" stroke-width="1.2" stroke-linejoin="round"/>
+  </g>
+</svg>

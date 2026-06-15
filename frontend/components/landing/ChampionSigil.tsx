@@ -79,29 +79,33 @@ function Glyph({ type }: { type: SigilType }) {
 export function ChampionSigil({
   type,
   color,
+  size = "lg",
 }: {
   type: SigilType;
   color: string;
+  // "lg" = the landing crest (h-28); "sm" = a compact roster badge (h-11).
+  size?: "lg" | "sm";
 }) {
+  const sm = size === "sm";
   return (
     <div
-      className="relative grid h-28 w-28 place-items-center"
+      className={`relative grid place-items-center ${sm ? "h-11 w-11" : "h-28 w-28"}`}
       style={{ ["--c" as string]: color }}
     >
       {/* Breathing aura behind the glyph. */}
       <div
         aria-hidden
-        className="champion-aura animate-aura absolute inset-0 rounded-full blur-xl"
+        className={`champion-aura animate-aura absolute inset-0 rounded-full ${sm ? "blur-md" : "blur-xl"}`}
         style={{ background: `radial-gradient(circle, ${color}, transparent 70%)` }}
       />
       {/* Crest frame ring. */}
       <div
-        className="absolute inset-1 rounded-full border"
+        className={`absolute rounded-full border ${sm ? "inset-0.5" : "inset-1"}`}
         style={{ borderColor: `${color}33` }}
       />
       <svg
         viewBox="0 0 100 100"
-        className="champion-glyph relative h-20 w-20 transition-[filter,transform] duration-500"
+        className={`champion-glyph relative transition-[filter,transform] duration-500 ${sm ? "h-7 w-7" : "h-20 w-20"}`}
         style={{ color }}
       >
         <Glyph type={type} />

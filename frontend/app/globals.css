@@ -92,6 +92,38 @@ body {
 }
 .animate-forge-in { animation: forge-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* Intake wizard: each step slides in from the right as the council advances. */
+@keyframes step-in {
+  from { opacity: 0; transform: translateX(18px); filter: blur(3px); }
+  to { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+.animate-step-in { animation: step-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Intake wizard: a remark plate unfurling beneath a task. */
+@keyframes inscribe {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-inscribe { animation: inscribe 0.3s ease-out both; }
+
+/* Forged-week celebration modal: backdrop fade + panel pop. */
+@keyframes forged-backdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-forged-backdrop { animation: forged-backdrop 0.3s ease-out both; }
+
+@keyframes forged-pop {
+  from { opacity: 0; transform: translateY(16px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-forged-pop { animation: forged-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-forged-backdrop,
+  .animate-forged-pop { animation: none; }
+}
+
 /* Landing: slow drift of the molten mesh background. */
 @keyframes mesh-drift {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
@@ -105,6 +137,47 @@ body {
   50% { opacity: 1; transform: scale(1.06); }
 }
 .animate-aura { animation: aura-pulse 4.5s ease-in-out infinite; }
+
+/* ─────────────────────────────────────────────────────────────
+   Themed scrollbar — molten thumb on a near-invisible track, so
+   scrollable surfaces (the forged week) stay inside the forge world
+   instead of falling back to the OS's grey bar.
+   ───────────────────────────────────────────────────────────── */
+.scroll-forge {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 166, 35, 0.4) transparent;
+}
+.scroll-forge::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.scroll-forge::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-forge::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  background-color: rgba(245, 166, 35, 0.32);
+  background-image: linear-gradient(180deg, rgba(255, 107, 53, 0.55), rgba(245, 166, 35, 0.4));
+}
+.scroll-forge::-webkit-scrollbar-thumb:hover {
+  background-image: linear-gradient(180deg, rgba(255, 107, 53, 0.85), rgba(245, 166, 35, 0.65));
+}
+
+/* Roster: the active champion's row breathes a low ember glow. */
+@keyframes roster-ignite {
+  0%, 100% { box-shadow: 0 0 0 1px var(--ring-c), 0 0 18px -6px var(--ring-c); }
+  50% { box-shadow: 0 0 0 1px var(--ring-c), 0 0 26px -4px var(--ring-c); }
+}
+.animate-roster-ignite { animation: roster-ignite 3.2s ease-in-out infinite; }
+
+/* Round tabs: the active round's content settles in when switched. */
+@keyframes round-settle {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+.animate-round-settle { animation: round-settle 0.34s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 /* Landing: champion sigil — base glow + hover "ignite". The card exposes its
    signature hue as --c; hover intensifies the glyph and aura. */
@@ -147,6 +220,23 @@ body {
   }
 }
 
+/* Brand mark: resting ember glow on the sigil + a gentle "ignite" on hover
+   of the whole logo lockup. */
+.forge-logo-sigil {
+  filter: drop-shadow(0 0 5px rgba(255, 107, 53, 0.45));
+}
+.forge-logo:hover .forge-logo-sigil {
+  transform: rotate(-6deg) scale(1.06);
+  filter: drop-shadow(0 0 11px rgba(255, 107, 53, 0.7))
+    drop-shadow(0 0 3px rgba(245, 166, 35, 0.6));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .forge-logo:hover .forge-logo-sigil {
+    transform: none;
+  }
+}
+
 /* Landing: rising ember particles. */
 @keyframes ember-rise {
   0% { opacity: 0; transform: translateY(0) scale(0.6); }
@@ -158,8 +248,12 @@ body {
   .animate-rise-in,
   .animate-forged,
   .animate-forge-in,
+  .animate-step-in,
+  .animate-inscribe,
   .animate-mesh-drift,
-  .animate-aura {
+  .animate-aura,
+  .animate-roster-ignite,
+  .animate-round-settle {
     animation: none;
   }
 }

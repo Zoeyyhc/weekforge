@@ -2,6 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TaskForm } from "@/components/TaskForm";
+import type { UserEvent } from "@testing-library/user-event";
+
+// The intake is a stepped wizard (Tasks → Busy Blocks → Preferences); "Convene"
+// only appears on the final step. Walk forward via the "Next" button.
+async function advance(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: /next/i }));
+}
 
 describe("TaskForm", () => {
   it("submits the seeded sample week as a StartDebateRequest", async () => {
@@ -9,6 +16,8 @@ describe("TaskForm", () => {
     const user = userEvent.setup();
     render(<TaskForm onStart={onStart} />);
 
+    await advance(user); // Tasks → Busy Blocks
+    await advance(user); // Busy Blocks → Preferences
     await user.click(screen.getByRole("button", { name: /convene the council/i }));
 
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -37,30 +46,31 @@ describe("TaskForm", () => {
     expect(screen.getAllByTestId("task-row").length).toBe(before - 1);
   });
 
-  it("blocks submit and shows an error when no task has a title", async () => {
+  it("blocks advancing and shows an error when no task has a title", async () => {
     const onStart = vi.fn();
     const user = userEvent.setup();
     render(<TaskForm onStart={onStart} />);
 
-    // Clear every task title.
+    // Clear every task title, then try to leave the Tasks step.
     for (const input of screen.getAllByTestId("task-title-input")) {
       await user.clear(input);
     }
-    await user.click(screen.getByRole("button", { name: /convene the council/i }));
+    await advance(user);
 
     expect(screen.getByTestId("form-error")).toBeInTheDocument();
     expect(onStart).not.toHaveBeenCalled();
   });
 
-  it("blocks submit when a busy block ends before it starts", async () => {
+  it("blocks advancing when a busy block ends before it starts", async () => {
     const onStart = vi.fn();
     const user = userEvent.setup();
     render(<TaskForm onStart={onStart} />);
 
+    await advance(user); // Tasks → Busy Blocks
     const end = screen.getAllByTestId("busy-end-input")[0];
-    // datetime-local is unreliable with userEvent.type in jsdom; set the value directly.
+    // datetime-local is unreliable with userEvent.type in jsdom; set it directly.
     fireEvent.change(end, { target: { value: "2026-06-15T09:00" } }); // before the seeded 10:00 start
-    await user.click(screen.getByRole("button", { name: /convene the council/i }));
+    await advance(user); // attempt Busy Blocks → Preferences
 
     expect(screen.getByTestId("form-error")).toBeInTheDocument();
     expect(onStart).not.toHaveBeenCalled();
@@ -71,9 +81,10 @@ describe("TaskForm", () => {
     const user = userEvent.setup();
     render(<TaskForm onStart={onStart} />);
 
+    await advance(user); // Tasks → Busy Blocks
     // Add a block row but leave it empty (no start/end).
     await user.click(screen.getByTestId("add-block-btn"));
-    // Should not throw; empty block is silently dropped.
+    await advance(user); // Busy Blocks → Preferences (empty block is dropped)
     await user.click(screen.getByRole("button", { name: /convene the council/i }));
 
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -101,5 +112,16 @@ describe("TaskForm", () => {
     expect(screen.getByDisplayValue("Third task")).toBeInTheDocument();
     // And there should be exactly 2 rows left (started with 2, added 1, removed 1).
     expect(screen.getAllByTestId("task-row").length).toBe(2);
+  });
+
+  it("opens a remark plate and captures a note (UI-only)", async () => {
+    const user = userEvent.setup();
+    render(<TaskForm onStart={vi.fn()} />);
+
+    const toggle = screen.getAllByTestId("task-remark-toggle")[0];
+    await user.click(toggle);
+    const remark = screen.getAllByTestId("task-remark-input")[0];
+    await user.type(remark, "Needs the morning");
+    expect(remark).toHaveValue("Needs the morning");
   });
 });
