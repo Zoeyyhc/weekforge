@@ -189,3 +189,31 @@ def test_fmt_tasks_includes_preferred_days_and_deadline(base_state):
     assert "prefer" in result
     assert "Wed" in result
     assert "Fri" in result
+
+
+def test_fmt_tasks_includes_remark_when_present(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {
+        **base_state,
+        "tasks": [
+            Task(
+                id="t1",
+                title="Write report",
+                estimated_minutes=120,
+                priority=1,
+                remark="Do this first thing in the morning, before emails",
+            )
+        ],
+    }
+    result = _fmt_tasks(state)
+    assert "Do this first thing in the morning" in result
+    assert "note:" in result
+
+
+def test_fmt_tasks_omits_note_segment_when_remark_is_none(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {**base_state, "tasks": [Task(id="t1", title="Write report", estimated_minutes=60, priority=2)]}
+    result = _fmt_tasks(state)
+    assert "note:" not in result

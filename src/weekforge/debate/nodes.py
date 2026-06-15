@@ -28,6 +28,8 @@ def _fmt_tasks(state: DebateState) -> str:
                 for i, d in enumerate(t.preferred_days[:2])
             )
             line += f", prefer: {pref}"
+        if t.remark:
+            line += f", note: \"{t.remark}\""
         line += ")"
         lines.append(line)
     return "\n".join(lines) if lines else "No tasks."
