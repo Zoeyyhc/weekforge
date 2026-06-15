@@ -112,6 +112,42 @@ def test_arbitrate_includes_human_input_when_present(mock_council, base_state):
     assert result["arbiter_output"] is not None
 
 
+def test_arbitrate_context_injects_prefs_busy_and_hard_constraints(base_state):
+    captured = {}
+
+    class RecordingCouncil:
+        def arbitrate(self, context: str) -> str:
+            captured["context"] = context
+            return "[]"
+
+    state = {
+        **base_state,
+        "proposals": {n: "p" for n in DEBATER_NAMES},
+        "critiques": {n: "c" for n in DEBATER_NAMES},
+        "round_number": 1,
+        "preferences": Preferences(
+            workday_start_hour=9, workday_end_hour=17, timezone="Australia/Sydney"
+        ),
+        "busy_blocks": [
+            TimeBlock(start=_utc(2026, 6, 15, 10), end=_utc(2026, 6, 15, 11), label="Standup")
+        ],
+    }
+
+    node = make_arbitrate_node(RecordingCouncil())
+    node(state)
+    ctx = captured["context"]
+
+    # Real preference values injected (from _fmt_prefs)
+    assert "Work hours 9:00–17:00" in ctx
+    assert "max focus" in ctx
+    # Fixed commitments injected (from _fmt_busy)
+    assert "Standup" in ctx
+    # Hard constraints present
+    assert "HARD SCHEDULING CONSTRAINTS" in ctx
+    assert "same local date" in ctx
+    assert "23:59" in ctx
+
+
 # ── validate ────────────────────────────────────────────────────────────────
 
 def test_validate_parses_valid_json_into_schedule(base_state, mock_api_key):
