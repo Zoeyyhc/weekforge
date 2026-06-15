@@ -15,10 +15,10 @@ def _utc(h, m=0, *, day=15):
     return datetime(2026, 6, day, h, m, tzinfo=timezone.utc)
 
 
-def _block(label, start_h, end_h, *, task_id=None, start_day=15, end_day=15):
+def _block(label, start_h, end_h, *, task_id=None, start_day=15, end_day=15, end_m=0):
     return TimeBlock(
         start=_utc(start_h, day=start_day),
-        end=_utc(end_h, day=end_day),
+        end=_utc(end_h, end_m, day=end_day),
         label=label,
         task_id=task_id,
     )
@@ -89,6 +89,32 @@ def test_local_timezone_applied_for_work_window():
     prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
     errors = validate_blocks(blocks, [], [], prefs)
     assert errors == []
+
+
+# ── Rule 2: no cross-midnight blocks ─────────────────────────────────────────
+
+def test_cross_midnight_block_is_reported():
+    # Starts 22:00 on the 15th, ends 00:30 on the 16th → spans midnight.
+    blocks = [_block("Night owl", 22, 0, start_day=15, end_day=16, end_m=30)]
+    prefs = Preferences(workday_start_hour=8, workday_end_hour=24)
+    errors = validate_blocks(blocks, [], [], prefs)
+    assert len(errors) == 1
+    assert "spans midnight" in errors[0]
+    assert "Night owl" in errors[0]
+
+
+def test_same_day_block_after_work_end_is_reported():
+    # Same-day block ending 19:00 with workday_end_hour=18 → after work window.
+    blocks = [_block("Overtime", 9, 19)]
+    errors = validate_blocks(
+        blocks,
+        [],
+        [],
+        Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600),
+    )
+    assert len(errors) == 1
+    assert "after work window" in errors[0]
+    assert "19:00" in errors[0]
 
 
 # ── Rule 3: busy-block overlap ───────────────────────────────────────────────

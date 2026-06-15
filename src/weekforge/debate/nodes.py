@@ -88,20 +88,28 @@ def validate_blocks(
         if block.task_id is not None and block.task_id not in known_ids:
             errors.append(f"Block '{block.label}': unknown task_id '{block.task_id}'")
 
-        # Rule 2: block must start within work window (local time)
-        if local_start.hour + local_start.minute / 60 < preferences.workday_start_hour:
-            errors.append(
-                f"Block '{block.label}': starts {local_start.strftime('%H:%M')} local, "
-                f"before work window {preferences.workday_start_hour:02d}:00"
-            )
-        # Check end time only for same-day blocks and when end_hour < 24
+        # Rule 2: block must stay within one local day and inside the work window.
         cross_day = local_start.date() != local_end.date()
-        if not cross_day and preferences.workday_end_hour < 24:
-            if local_end.hour + local_end.minute / 60 > preferences.workday_end_hour:
+        if cross_day:
+            errors.append(
+                f"Block '{block.label}': spans midnight "
+                f"(starts {local_start.strftime('%a %d %b')}, "
+                f"ends {local_end.strftime('%a %d %b')}); "
+                f"focus blocks must stay within one day"
+            )
+        else:
+            if local_start.hour + local_start.minute / 60 < preferences.workday_start_hour:
                 errors.append(
-                    f"Block '{block.label}': ends {local_end.strftime('%H:%M')} local, "
-                    f"after work window {preferences.workday_end_hour:02d}:00"
+                    f"Block '{block.label}': starts {local_start.strftime('%H:%M')} local, "
+                    f"before work window {preferences.workday_start_hour:02d}:00"
                 )
+            # workday_end_hour == 24 means midnight; same-day blocks ending by 23:59 are fine.
+            if preferences.workday_end_hour < 24:
+                if local_end.hour + local_end.minute / 60 > preferences.workday_end_hour:
+                    errors.append(
+                        f"Block '{block.label}': ends {local_end.strftime('%H:%M')} local, "
+                        f"after work window {preferences.workday_end_hour:02d}:00"
+                    )
 
         # Rule 3: no overlap with busy blocks
         for busy in busy_blocks:
