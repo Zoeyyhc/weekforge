@@ -165,16 +165,17 @@ class GoogleCalendarProvider:
 # ---------------------------------------------------------------------------
 
 class GoogleCalendarWriter:
-    """Writes forged schedule blocks into a dedicated WeekForge calendar.
+    """Writes forged schedule blocks into the user's primary calendar.
 
-    Re-export for the same week first clears the calendar range, then writes
-    fresh events — idempotent by design. Only the WeekForge calendar is ever
-    touched; the user's primary calendar is never modified.
+    Each event carries a private WeekForge marker so re-exports delete ONLY our
+    own blocks. Foreign events (the user's real meetings) are never read,
+    modified, or deleted — guaranteed by the marker filter plus the client-side
+    guard in delete_events_in_range.
     """
 
-    def __init__(self, client: GoogleCalendarClient, calendar_name: str = "WeekForge") -> None:
+    def __init__(self, client: GoogleCalendarClient, target_calendar_id: str = "primary") -> None:
         self._client = client
-        self._calendar_name = calendar_name
+        self._target_calendar_id = target_calendar_id
 
     def write_blocks(
         self,
@@ -183,17 +184,23 @@ class GoogleCalendarWriter:
         week_end: datetime,
         time_zone: str | None = None,
     ) -> int:
-        cal_id = self._client.find_calendar(self._calendar_name)
-        if cal_id is None:
-            cal_id = self._client.create_calendar(self._calendar_name)
+        cal_id = self._target_calendar_id
 
-        self._client.delete_events_in_range(cal_id, week_start, week_end)
+        # Clear previous WeekForge blocks only — marker filter + guard ensure
+        # foreign events are never touched.
+        self._client.delete_events_in_range(
+            cal_id, week_start, week_end,
+            private_extended_property=WEEKFORGE_MARKER_QUERY,
+        )
 
         for block in blocks:
             event = {
                 "summary": block.label,
                 "start": self._event_time(block.start, time_zone),
                 "end": self._event_time(block.end, time_zone),
+                "extendedProperties": {
+                    "private": {WEEKFORGE_MARKER_KEY: WEEKFORGE_MARKER_VALUE}
+                },
             }
             self._client.insert_event(cal_id, event)
 
