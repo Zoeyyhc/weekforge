@@ -165,3 +165,27 @@ def test_finalize_returns_schedule_unchanged(base_state):
     state = {**base_state, "schedule": schedule}
     result = finalize_node(state)
     assert result["schedule"] is schedule
+
+
+def test_fmt_tasks_includes_preferred_days_and_deadline(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {
+        **base_state,
+        "tasks": [
+            Task(
+                id="t1",
+                title="Review PRs",
+                estimated_minutes=90,
+                priority=2,
+                deadline=datetime(2026, 6, 18, 23, 59, tzinfo=timezone.utc),
+                preferred_days=["Wed", "Fri"],
+            )
+        ],
+    }
+    result = _fmt_tasks(state)
+    assert "deadline" in result
+    assert "Thu" in result        # Jun 18 2026 is a Thursday
+    assert "prefer" in result
+    assert "Wed" in result
+    assert "Fri" in result
