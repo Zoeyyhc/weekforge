@@ -19,9 +19,15 @@ def _fmt_tasks(state: DebateState) -> str:
     for t in state["tasks"]:
         line = f"- [{t.id}] {t.title} ({t.estimated_minutes}min, priority {t.priority}"
         if t.deadline:
-            line += f", deadline {t.deadline.date()}"
+            line += f", deadline {t.deadline.strftime('%a %d %b')}"
         if t.category:
             line += f", category: {t.category}"
+        if t.preferred_days:
+            pref = " · ".join(
+                f"{'1st' if i == 0 else '2nd'} {d}"
+                for i, d in enumerate(t.preferred_days[:2])
+            )
+            line += f", prefer: {pref}"
         line += ")"
         lines.append(line)
     return "\n".join(lines) if lines else "No tasks."

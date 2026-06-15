@@ -51,3 +51,18 @@ def test_schedule_defaults_empty():
     schedule = Schedule()
     assert schedule.blocks == []
     assert schedule.week_start is None
+
+
+def test_task_preferred_days_defaults_to_none():
+    task = Task(id="t1", title="Write report", estimated_minutes=60)
+    assert task.preferred_days is None
+
+
+def test_task_preferred_days_accepts_ordered_list():
+    task = Task(id="t1", title="Write report", estimated_minutes=60, preferred_days=["Wed", "Fri"])
+    assert task.preferred_days == ["Wed", "Fri"]
+
+
+def test_task_preferred_days_accepts_empty_list():
+    task = Task(id="t1", title="Write report", estimated_minutes=60, preferred_days=[])
+    assert task.preferred_days == []

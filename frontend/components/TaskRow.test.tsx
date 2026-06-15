@@ -4,7 +4,15 @@ import userEvent from "@testing-library/user-event";
 import { TaskRow } from "@/components/TaskRow";
 import { TaskDraft } from "@/lib/buildRequest";
 
-const draft: TaskDraft = { id: "test-t1", title: "Write report", estimatedMinutes: "120", priority: 2 };
+const draft: TaskDraft = {
+  id: "test-t1",
+  title: "Write report",
+  estimatedMinutes: "120",
+  priority: 2,
+  hasDeadline: false,
+  deadlineWeekday: "Fri",
+  preferredDays: [],
+};
 
 describe("TaskRow", () => {
   it("renders the draft values", () => {
@@ -45,5 +53,63 @@ describe("TaskRow", () => {
     // Use fireEvent to directly set value and trigger change
     fireEvent.change(input, { target: { value: "45" } });
     expect(onChange).toHaveBeenLastCalledWith({ estimatedMinutes: "45" });
+  });
+});
+
+describe("TaskRow — deadline + preferred days", () => {
+  it("hides deadline weekday select when hasDeadline is false", () => {
+    render(<TaskRow draft={draft} onChange={vi.fn()} onRemove={vi.fn()} />);
+    expect(screen.queryByLabelText(/deadline weekday/i)).toBeNull();
+  });
+
+  it("shows deadline weekday select when hasDeadline is true", () => {
+    render(<TaskRow draft={{ ...draft, hasDeadline: true }} onChange={vi.fn()} onRemove={vi.fn()} />);
+    expect(screen.getByLabelText(/deadline weekday/i)).toBeInTheDocument();
+  });
+
+  it("calls onChange with hasDeadline toggled when deadline pill is clicked", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<TaskRow draft={draft} onChange={onChange} onRemove={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /deadline/i }));
+    expect(onChange).toHaveBeenCalledWith({ hasDeadline: true });
+  });
+
+  it("adds first preferred day on first pill click", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<TaskRow draft={draft} onChange={onChange} onRemove={vi.fn()} />);
+    await user.click(screen.getByTestId("day-pill-Wed"));
+    expect(onChange).toHaveBeenCalledWith({ preferredDays: ["Wed"] });
+  });
+
+  it("adds second preferred day when one is already selected", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <TaskRow draft={{ ...draft, preferredDays: ["Wed"] }} onChange={onChange} onRemove={vi.fn()} />
+    );
+    await user.click(screen.getByTestId("day-pill-Fri"));
+    expect(onChange).toHaveBeenCalledWith({ preferredDays: ["Wed", "Fri"] });
+  });
+
+  it("removes a preferred day when its pill is clicked again", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <TaskRow draft={{ ...draft, preferredDays: ["Wed", "Fri"] }} onChange={onChange} onRemove={vi.fn()} />
+    );
+    await user.click(screen.getByTestId("day-pill-Wed"));
+    expect(onChange).toHaveBeenCalledWith({ preferredDays: ["Fri"] });
+  });
+
+  it("does not add a third preferred day (max 2)", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <TaskRow draft={{ ...draft, preferredDays: ["Wed", "Fri"] }} onChange={onChange} onRemove={vi.fn()} />
+    );
+    await user.click(screen.getByTestId("day-pill-Mon"));
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

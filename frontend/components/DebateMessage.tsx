@@ -1,3 +1,4 @@
+import ReactMarkdown from "react-markdown";
 import { DebateEventMsg } from "@/lib/types";
 import { agentMeta } from "@/lib/agents";
 
@@ -24,7 +25,9 @@ export function DebateMessage({ event }: { event: DebateEventMsg }) {
           {EVENT_LABEL[event.event_type] ?? event.event_type}
         </span>
       </div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed">{event.content}</p>
+      <div className="text-sm leading-relaxed [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_strong]:font-bold [&_h3]:font-semibold [&_h3]:text-base [&_h3]:mb-1 [&_h4]:font-semibold [&_h4]:mb-1 [&_p]:mb-1 last:[&_p]:mb-0">
+        <ReactMarkdown>{event.content}</ReactMarkdown>
+      </div>
     </div>
   );
 }
