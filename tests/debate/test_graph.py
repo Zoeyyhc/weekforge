@@ -46,6 +46,16 @@ def test_route_invalid_schedule_goes_to_arbitrate():
     assert _route_after_validate(state) == "arbitrate"
 
 
+def test_route_retries_arbitrate_when_under_cap():
+    state = {"schedule": None, "validation_attempts": 1, "max_validation_attempts": 3}
+    assert _route_after_validate(state) == "arbitrate"
+
+
+def test_route_finalizes_when_attempts_reach_cap():
+    state = {"schedule": None, "validation_attempts": 3, "max_validation_attempts": 3}
+    assert _route_after_validate(state) == "finalize"
+
+
 # ── Graph structure tests ───────────────────────────────────────────────────
 
 def test_build_graph_returns_compiled_graph(mock_council, mock_api_key):
