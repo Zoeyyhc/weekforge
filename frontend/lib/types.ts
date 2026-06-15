@@ -63,6 +63,7 @@ export interface TaskInput {
   category?: string | null;
   depends_on?: string[];
   preferred_days?: string[];
+  remark?: string | null;
 }
 
 export interface BusyBlockInput {
