@@ -174,6 +174,38 @@ def test_validate_parses_valid_json_into_schedule(base_state, mock_api_key):
     assert result["validation_error"] is None
 
 
+def test_validate_success_clears_stale_best_effort_metadata(base_state, mock_api_key):
+    valid_json_output = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    stale_best_effort = Schedule(
+        blocks=[TimeBlock(start=_utc(2026, 6, 15, 11), end=_utc(2026, 6, 15, 12), label="stale")]
+    )
+    state = {
+        **base_state,
+        "arbiter_output": valid_json_output,
+        "round_number": 2,
+        "best_effort_schedule": stale_best_effort,
+        "validation_warnings": "Schedule failed semantic validation:\n  - stale warning",
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = valid_json_output
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert isinstance(result["schedule"], Schedule)
+    assert result["validation_error"] is None
+    assert result["validation_warnings"] is None
+    assert result["best_effort_schedule"] is None
+
+
 def test_validate_sets_error_on_semantic_violation(base_state, mock_api_key):
     # Block at 02:00 UTC with timezone=None (UTC fallback), workday_start=9 → violation
     out_of_hours_json = (

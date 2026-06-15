@@ -352,7 +352,12 @@ def make_validate_node(api_key: str):
                     "validation_attempts": state.get("validation_attempts", 0) + 1,
                     "transcript": [event],
                 }
-            return {"schedule": Schedule(blocks=blocks), "validation_error": None}
+            return {
+                "schedule": Schedule(blocks=blocks),
+                "validation_error": None,
+                "validation_warnings": None,
+                "best_effort_schedule": None,
+            }
         except Exception as exc:
             error_msg = str(exc)
             event = {
