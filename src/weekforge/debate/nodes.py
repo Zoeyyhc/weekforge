@@ -29,7 +29,8 @@ def _fmt_tasks(state: DebateState) -> str:
             )
             line += f", prefer: {pref}"
         if t.remark:
-            line += f", note: \"{t.remark}\""
+            safe = t.remark.replace("\\", "\\\\").replace('"', '\\"')
+            line += f', note: "{safe}"'
         line += ")"
         lines.append(line)
     return "\n".join(lines) if lines else "No tasks."
