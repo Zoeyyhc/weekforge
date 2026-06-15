@@ -8,6 +8,7 @@ import {
   TaskDraft,
   BusyBlockDraft,
   PrefsDraft,
+  Weekday,
 } from "@/lib/buildRequest";
 import { TaskRow } from "@/components/TaskRow";
 import { BusyBlockRow } from "@/components/BusyBlockRow";
@@ -17,13 +18,48 @@ function nextDraftId(): string {
   return `draft-${++_draftIdCounter}`;
 }
 
+function emptyTask(): TaskDraft {
+  return {
+    id: nextDraftId(),
+    title: "",
+    estimatedMinutes: "60",
+    priority: 2,
+    hasDeadline: false,
+    deadlineWeekday: "Fri" as Weekday,
+    preferredDays: [],
+  };
+}
+
 const SEED_TASKS: TaskDraft[] = [
-  { id: nextDraftId(), title: "Write Q3 report", estimatedMinutes: "180", priority: 1, hasDeadline: false, deadlineWeekday: "Fri" as const, preferredDays: [] },
-  { id: nextDraftId(), title: "Review 5 pull requests", estimatedMinutes: "90", priority: 2, hasDeadline: false, deadlineWeekday: "Fri" as const, preferredDays: [] },
+  {
+    id: nextDraftId(),
+    title: "Write Q3 report",
+    estimatedMinutes: "180",
+    priority: 1,
+    hasDeadline: false,
+    deadlineWeekday: "Fri" as Weekday,
+    preferredDays: [],
+  },
+  {
+    id: nextDraftId(),
+    title: "Review 5 pull requests",
+    estimatedMinutes: "90",
+    priority: 2,
+    hasDeadline: false,
+    deadlineWeekday: "Fri" as Weekday,
+    preferredDays: [],
+  },
 ];
+
 const SEED_BLOCKS: BusyBlockDraft[] = [
-  { id: nextDraftId(), label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
+  {
+    id: nextDraftId(),
+    label: "Standup",
+    start: "2026-06-15T10:00",
+    end: "2026-06-15T11:00",
+  },
 ];
+
 const SEED_PREFS: PrefsDraft = {
   workdayStartHour: "9",
   workdayEndHour: "18",
@@ -40,6 +76,21 @@ function validate(tasks: TaskDraft[], blocks: BusyBlockDraft[]): string | null {
       return "Each busy block must end after it starts.";
   }
   return null;
+}
+
+function ForgeCard({
+  children,
+  barClass,
+}: {
+  children: React.ReactNode;
+  barClass: string;
+}) {
+  return (
+    <div className="flex rounded-xl bg-[#1c2030] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className={`w-1 self-stretch rounded-l-xl shrink-0 ${barClass}`} aria-hidden="true" />
+      <div className="flex-1 p-4 flex flex-col gap-3">{children}</div>
+    </div>
+  );
 }
 
 export function TaskForm({
@@ -70,22 +121,25 @@ export function TaskForm({
       return;
     }
     setError(null);
-    // Drop tasks with empty titles before building the request.
     const titledTasks = tasks.filter((t) => t.title.trim() !== "");
     const populatedBlocks = blocks.filter((b) => b.start !== "" && b.end !== "");
     onStart(buildRequest(titledTasks, populatedBlocks, prefs));
   }
 
   return (
-    <div className="flex flex-col gap-6" data-testid="task-form">
-      <section className="flex flex-col gap-2">
+    <div className="flex flex-col gap-4" data-testid="task-form">
+
+      {/* ── Tasks card ── */}
+      <ForgeCard barClass="bg-gradient-to-b from-rose-400 to-ember">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Tasks</h2>
+          <h2 className="font-mono text-xs font-bold uppercase tracking-widest text-foreground">
+            ⚔ Tasks
+          </h2>
           <button
             type="button"
             data-testid="add-task-btn"
-            onClick={() => setTasks((prev) => [...prev, { id: nextDraftId(), title: "", estimatedMinutes: "60", priority: 2, hasDeadline: false, deadlineWeekday: "Fri" as const, preferredDays: [] }])}
-            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+            onClick={() => setTasks((prev) => [...prev, emptyTask()])}
+            className="text-xs font-medium text-ember underline hover:text-amber transition-colors"
           >
             + Add task
           </button>
@@ -98,18 +152,24 @@ export function TaskForm({
             onRemove={() => setTasks((prev) => prev.filter((_, j) => j !== i))}
           />
         ))}
-      </section>
+      </ForgeCard>
 
-      <section className="flex flex-col gap-2">
+      {/* ── Busy Blocks card ── */}
+      <ForgeCard barClass="bg-gradient-to-b from-cyan-400 to-indigo-500">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Busy blocks
+          <h2 className="font-mono text-xs font-bold uppercase tracking-widest text-foreground">
+            🗓 Busy Blocks
           </h2>
           <button
             type="button"
             data-testid="add-block-btn"
-            onClick={() => setBlocks((prev) => [...prev, { id: nextDraftId(), label: "", start: "", end: "" }])}
-            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+            onClick={() =>
+              setBlocks((prev) => [
+                ...prev,
+                { id: nextDraftId(), label: "", start: "", end: "" },
+              ])
+            }
+            className="text-xs font-medium text-ember underline hover:text-amber transition-colors"
           >
             + Add block
           </button>
@@ -123,13 +183,18 @@ export function TaskForm({
             onRemove={() => setBlocks((prev) => prev.filter((_, j) => j !== i))}
           />
         ))}
-      </section>
+      </ForgeCard>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Preferences</h2>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-700">
-          <label className="flex items-center gap-1">
-            Workday
+      {/* ── Preferences card ── */}
+      <ForgeCard barClass="bg-gradient-to-b from-emerald-400 to-cyan-400">
+        <h2 className="font-mono text-xs font-bold uppercase tracking-widest text-foreground">
+          ⚙ Preferences
+        </h2>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border border-[#2a2620] bg-[#111318] p-3">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
+              🕘 Start
+            </div>
             <input
               data-testid="pref-start"
               type="number"
@@ -137,10 +202,14 @@ export function TaskForm({
               max={23}
               value={prefs.workdayStartHour}
               onChange={(e) => setPrefs({ ...prefs, workdayStartHour: e.target.value })}
-              className="w-16 rounded-lg border border-slate-300 px-2 py-1"
+              className="w-full bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none font-mono text-lg font-bold text-foreground py-1 transition-colors"
               aria-label="Workday start hour"
             />
-            –
+          </div>
+          <div className="rounded-lg border border-[#2a2620] bg-[#111318] p-3">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
+              🕕 End
+            </div>
             <input
               data-testid="pref-end"
               type="number"
@@ -148,40 +217,47 @@ export function TaskForm({
               max={23}
               value={prefs.workdayEndHour}
               onChange={(e) => setPrefs({ ...prefs, workdayEndHour: e.target.value })}
-              className="w-16 rounded-lg border border-slate-300 px-2 py-1"
+              className="w-full bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none font-mono text-lg font-bold text-foreground py-1 transition-colors"
               aria-label="Workday end hour"
             />
-          </label>
-          <label className="flex items-center gap-1">
-            Max focus
-            <input
-              data-testid="pref-focus"
-              type="number"
-              min={0}
-              value={prefs.maxFocusMinutes}
-              onChange={(e) => setPrefs({ ...prefs, maxFocusMinutes: e.target.value })}
-              className="w-20 rounded-lg border border-slate-300 px-2 py-1"
-              aria-label="Max focus minutes per day"
-            />
-            min/day
-          </label>
+          </div>
+          <div className="rounded-lg border border-[#2a2620] bg-[#111318] p-3">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-muted mb-2">
+              🎯 Max Focus
+            </div>
+            <div className="flex items-baseline gap-1">
+              <input
+                data-testid="pref-focus"
+                type="number"
+                min={0}
+                value={prefs.maxFocusMinutes}
+                onChange={(e) => setPrefs({ ...prefs, maxFocusMinutes: e.target.value })}
+                className="w-full bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none font-mono text-lg font-bold text-foreground py-1 transition-colors"
+                aria-label="Max focus minutes per day"
+              />
+              <span className="font-mono text-xs text-muted shrink-0">min</span>
+            </div>
+          </div>
         </div>
-      </section>
+      </ForgeCard>
 
       {error && (
-        <p className="text-sm text-rose-600" data-testid="form-error">
+        <p className="text-sm text-rose-300" data-testid="form-error">
           {error}
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={handleStart}
-        disabled={disabled}
-        className="self-start rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
-      >
-        Convene the council
-      </button>
+      {/* ── Ember separator + CTA ── */}
+      <div className="border-t border-ember/20 pt-4">
+        <button
+          type="button"
+          onClick={handleStart}
+          disabled={disabled}
+          className="w-full rounded-xl bg-gradient-to-br from-ember to-amber px-6 py-3 text-sm font-black uppercase tracking-[0.2em] text-[#1a0e00] shadow-[0_4px_24px_rgba(255,107,53,0.35)] hover:shadow-[0_4px_32px_rgba(255,107,53,0.5)] transition-shadow disabled:opacity-50"
+        >
+          ⚒ Convene the Council
+        </button>
+      </div>
     </div>
   );
 }
