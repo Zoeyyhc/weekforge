@@ -17,6 +17,7 @@ class Task(BaseModel):
     priority: int = Field(default=3, ge=1, le=5)  # 1 = highest
     category: str | None = None  # used by the Focus Batcher for grouping
     depends_on: list[str] = Field(default_factory=list)
+    preferred_days: list[str] | None = None
 
 
 class TimeBlock(BaseModel):
