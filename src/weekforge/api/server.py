@@ -33,12 +33,10 @@ def _build_google_integration():
     from weekforge.integration import GoogleIntegration
 
     token_path = os.environ.get("GOOGLE_TOKEN_PATH", "weekforge_tokens.json")
-    calendar_name = os.environ.get("WEEKFORGE_CALENDAR_NAME", "WeekForge")
     frontend_url = os.environ.get("WEEKFORGE_FRONTEND_URL", "http://localhost:3000")
 
     return GoogleIntegration(
         token_store=JsonFileTokenStore(token_path),
-        calendar_name=calendar_name,
         frontend_url=frontend_url,
     )
 
