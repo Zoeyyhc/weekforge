@@ -194,7 +194,7 @@ export default function Home() {
             {state.interrupt && state.status === "interrupted" && (
               <InterventionPanel interrupt={state.interrupt} onSubmit={intervene} />
             )}
-            <DebateTimeline events={state.events} />
+            <DebateTimeline events={state.events} status={state.status} />
           </section>
         </div>
       )}
