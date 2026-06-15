@@ -1,12 +1,14 @@
 import { StartDebateRequest } from "@/lib/types";
 
+export type Weekday = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+
 export interface TaskDraft {
   id: string;
   title: string;
   estimatedMinutes: string; // raw input value; parsed on build
   priority: number;
   hasDeadline: boolean;
-  deadlineWeekday: string; // "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun"
+  deadlineWeekday: Weekday;
   preferredDays: string[]; // ordered, max 2: [firstChoice, secondChoice]
 }
 
@@ -23,18 +25,21 @@ export interface PrefsDraft {
   maxFocusMinutes: string;
 }
 
-const WEEKDAY_INDEX: Record<string, number> = {
+const WEEKDAY_INDEX: Record<Weekday, number> = {
   Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6,
 };
 
-/** Convert a weekday abbreviation to the ISO datetime of that day at 23:59 local time in the current week. */
-function deadlineToISO(weekday: string): string {
+/** Convert a weekday abbreviation to the ISO datetime of that day at 23:59 local time in the current week.
+ * If the target day is in the past this week, wraps to the same day next week.
+ */
+function deadlineToISO(weekday: Weekday): string {
   const today = new Date();
   const mondayOffset = (today.getDay() + 6) % 7; // days since Monday (0 = Mon)
-  const targetOffset = WEEKDAY_INDEX[weekday] ?? 4;
+  const targetOffset = WEEKDAY_INDEX[weekday];
   const diff = targetOffset - mondayOffset;
+  const adjustedDiff = diff < 0 ? diff + 7 : diff;
   const target = new Date(today);
-  target.setDate(today.getDate() + diff);
+  target.setDate(today.getDate() + adjustedDiff);
   target.setHours(23, 59, 0, 0);
   return target.toISOString();
 }

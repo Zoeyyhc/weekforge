@@ -104,6 +104,17 @@ describe("buildRequest — deadline", () => {
     const d = new Date(req.tasks[0].deadline!);
     expect(d.getDate()).toBe(15);
   });
+
+  it("wraps to next week when the target day is in the past", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 19, 8, 0, 0)); // Friday 19 Jun 2026
+
+    const req = buildRequest([makeDraft({ hasDeadline: true, deadlineWeekday: "Mon" })], noBlocks, prefs);
+    const d = new Date(req.tasks[0].deadline!);
+    // Mon is 5 days before Friday → diff = -5, should wrap to next Mon (22 Jun)
+    expect(d.getDate()).toBe(22);
+    expect(d.getMonth()).toBe(5); // June
+  });
 });
 
 describe("buildRequest — preferredDays", () => {
