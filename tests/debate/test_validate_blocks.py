@@ -103,6 +103,22 @@ def test_cross_midnight_block_is_reported():
     assert "Night owl" in errors[0]
 
 
+def test_cross_midnight_uses_local_dates_not_utc_dates():
+    # 13:30-14:30 UTC on Jun 15 = 23:30 Jun 15 to 00:30 Jun 16 in Sydney.
+    blocks = [
+        TimeBlock(
+            start=datetime(2026, 6, 15, 13, 30, tzinfo=timezone.utc),
+            end=datetime(2026, 6, 15, 14, 30, tzinfo=timezone.utc),
+            label="Sydney late session",
+        )
+    ]
+    prefs = Preferences(workday_start_hour=8, workday_end_hour=24, timezone="Australia/Sydney")
+    errors = validate_blocks(blocks, [], [], prefs)
+    assert len(errors) == 1
+    assert "spans midnight" in errors[0]
+    assert "Sydney late session" in errors[0]
+
+
 def test_same_day_block_after_work_end_is_reported():
     # Same-day block ending 19:00 with workday_end_hour=18 → after work window.
     blocks = [_block("Overtime", 9, 19)]
