@@ -12,7 +12,10 @@ export function BusyBlockRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2" data-testid="busy-block-row">
+    <div
+      className="flex items-center gap-2 rounded-lg border border-[#2a2620] bg-[#111318] px-3 py-2"
+      data-testid="busy-block-row"
+    >
       <input
         type="text"
         data-testid="busy-label-input"
@@ -20,23 +23,23 @@ export function BusyBlockRow({
         value={draft.label}
         onChange={(e) => onChange({ label: e.target.value })}
         placeholder="Commitment"
-        className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        className="flex-1 bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none text-sm text-foreground placeholder:text-[#3a3530] py-1 transition-colors"
       />
       <input
         data-testid="busy-start-input"
         type="datetime-local"
         value={draft.start}
         onChange={(e) => onChange({ start: e.target.value })}
-        className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+        className="bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none text-sm font-mono text-foreground py-1 transition-colors"
         aria-label="Start time"
       />
-      <span className="text-xs text-slate-400" aria-hidden="true">→</span>
+      <span className="text-xs text-[#4a4845] font-mono" aria-hidden="true">→</span>
       <input
         data-testid="busy-end-input"
         type="datetime-local"
         value={draft.end}
         onChange={(e) => onChange({ end: e.target.value })}
-        className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+        className="bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none text-sm font-mono text-foreground py-1 transition-colors"
         aria-label="End time"
       />
       <button
@@ -44,7 +47,7 @@ export function BusyBlockRow({
         data-testid="busy-remove"
         onClick={onRemove}
         aria-label="Remove busy block"
-        className="rounded-lg px-2 py-2 text-slate-400 hover:text-rose-600"
+        className="text-[#3a3530] hover:text-rose-400 px-1 transition-colors"
       >
         ✕
       </button>
