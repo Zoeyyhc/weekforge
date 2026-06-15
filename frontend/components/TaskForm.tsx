@@ -66,7 +66,7 @@ const SEED_PREFS: PrefsDraft = {
   maxFocusMinutes: "360",
 };
 
-function validate(tasks: TaskDraft[], blocks: BusyBlockDraft[]): string | null {
+function validate(tasks: TaskDraft[], blocks: BusyBlockDraft[], prefs: PrefsDraft): string | null {
   const titled = tasks.filter((t) => t.title.trim() !== "");
   if (titled.length === 0) return "Add at least one task with a title.";
   if (titled.some((t) => !(Number(t.estimatedMinutes) > 0)))
@@ -75,6 +75,8 @@ function validate(tasks: TaskDraft[], blocks: BusyBlockDraft[]): string | null {
     if (b.start && b.end && new Date(b.end) <= new Date(b.start))
       return "Each busy block must end after it starts.";
   }
+  if (Number(prefs.workdayStartHour) >= Number(prefs.workdayEndHour))
+    return "Workday start must be before end.";
   return null;
 }
 
@@ -115,7 +117,7 @@ export function TaskForm({
   }
 
   function handleStart() {
-    const err = validate(tasks, blocks);
+    const err = validate(tasks, blocks, prefs);
     if (err) {
       setError(err);
       return;
@@ -201,7 +203,7 @@ export function TaskForm({
               min={0}
               max={23}
               value={prefs.workdayStartHour}
-              onChange={(e) => setPrefs({ ...prefs, workdayStartHour: e.target.value })}
+              onChange={(e) => setPrefs((prev) => ({ ...prev, workdayStartHour: e.target.value }))}
               className="w-full bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none font-mono text-lg font-bold text-foreground py-1 transition-colors"
               aria-label="Workday start hour"
             />
@@ -216,7 +218,7 @@ export function TaskForm({
               min={0}
               max={23}
               value={prefs.workdayEndHour}
-              onChange={(e) => setPrefs({ ...prefs, workdayEndHour: e.target.value })}
+              onChange={(e) => setPrefs((prev) => ({ ...prev, workdayEndHour: e.target.value }))}
               className="w-full bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none font-mono text-lg font-bold text-foreground py-1 transition-colors"
               aria-label="Workday end hour"
             />
@@ -231,7 +233,7 @@ export function TaskForm({
                 type="number"
                 min={0}
                 value={prefs.maxFocusMinutes}
-                onChange={(e) => setPrefs({ ...prefs, maxFocusMinutes: e.target.value })}
+                onChange={(e) => setPrefs((prev) => ({ ...prev, maxFocusMinutes: e.target.value }))}
                 className="w-full bg-transparent border-0 border-b border-[#2a2620] focus:border-ember outline-none font-mono text-lg font-bold text-foreground py-1 transition-colors"
                 aria-label="Max focus minutes per day"
               />
