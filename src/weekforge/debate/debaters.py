@@ -25,7 +25,7 @@ class Council:
                 f"Given this planning context:\n{context}\n\n"
                 "Propose a weekly schedule that best serves YOUR specific objective. "
                 "Be concrete: name which tasks go on which days and at what times. "
-                "Explain your reasoning in 2-3 sentences."
+                "Explain your reasoning in 2-3 sentences. Limit your response to 150 words."
             ),
             expected_output="A proposed weekly schedule with task placements and a brief rationale.",
             agent=agent,
@@ -42,7 +42,7 @@ class Council:
                 f"Given these proposals from the council:\n{context}\n\n"
                 "Critique the proposals from YOUR perspective. "
                 "Be specific: which proposals conflict with your objective and why. "
-                "Be direct — this is a debate."
+                "Be direct — this is a debate. Limit your response to 100 words."
             ),
             expected_output="A specific critique of the proposals highlighting conflicts with your objective.",
             agent=agent,
