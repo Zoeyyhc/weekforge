@@ -346,6 +346,7 @@ def make_validate_node(api_key: str):
                 return {
                     "schedule": None,
                     "validation_error": error_msg,
+                    "validation_warnings": error_msg,
                     # Blocks parsed fine — keep them as the best-effort fallback.
                     "best_effort_schedule": Schedule(blocks=blocks),
                     "validation_attempts": state.get("validation_attempts", 0) + 1,
@@ -394,7 +395,9 @@ def finalize_node(state: DebateState) -> dict:
             return {
                 "schedule": best,
                 "degraded": True,
-                "validation_warnings": state.get("validation_error") or warning,
+                "validation_warnings": (
+                    state.get("validation_warnings") or state.get("validation_error") or warning
+                ),
                 "transcript": [event],
             }
     return {"schedule": schedule}

@@ -253,6 +253,7 @@ def test_validate_semantic_fail_returns_best_effort_and_increments_attempts(base
     assert isinstance(result["best_effort_schedule"], Schedule)
     assert len(result["best_effort_schedule"].blocks) == 1
     assert result["validation_attempts"] == 1
+    assert result["validation_warnings"] == result["validation_error"]
 
 
 def test_validate_parse_fail_increments_attempts_without_best_effort(base_state, mock_api_key):
@@ -298,7 +299,39 @@ def test_finalize_delivers_best_effort_when_no_valid_schedule(base_state):
     assert result["schedule"] is best
     assert result["degraded"] is True
     assert result["validation_warnings"]  # non-empty string
-    assert any(e["event_type"] == "system" for e in result["transcript"])
+    assert result["transcript"] == [
+        {
+            "round": 2,
+            "speaker": "System",
+            "content": (
+                "Exceeded 3 validation retries; returning best-effort schedule "
+                "(may contain semantic issues)."
+            ),
+            "event_type": "system",
+        }
+    ]
+
+
+def test_finalize_uses_semantic_warnings_for_best_effort_after_later_parse_error(base_state):
+    best = Schedule(blocks=[TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10), label="x")])
+    semantic_warning = "Schedule failed semantic validation:\n  - Block 'x': outside work window"
+    parse_error = "Expecting value: line 1 column 1 (char 0)"
+    state = {
+        **base_state,
+        "schedule": None,
+        "best_effort_schedule": best,
+        "validation_warnings": semantic_warning,
+        "validation_error": parse_error,
+        "max_validation_attempts": 3,
+        "round_number": 3,
+    }
+    result = finalize_node(state)
+    assert result["schedule"] is best
+    assert result["validation_warnings"] == semantic_warning
+    assert result["validation_warnings"] != parse_error
+    assert result["transcript"][0]["round"] == 3
+    assert result["transcript"][0]["speaker"] == "System"
+    assert result["transcript"][0]["event_type"] == "system"
 
 
 def test_finalize_returns_none_when_no_schedule_and_no_best_effort(base_state):
