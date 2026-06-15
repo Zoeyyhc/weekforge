@@ -19,7 +19,7 @@ import { GoogleConnect } from "@/components/GoogleConnect";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import { ImportPreview } from "@/components/ImportPreview";
 import { DebateStatus } from "@/lib/debateReducer";
-import { googleLoginUrl, googleDisconnectUrl, exportSchedule } from "@/lib/api";
+import { googleLoginUrl, exportSchedule } from "@/lib/api";
 import { BusyBlockInput, TimeBlock, StartDebateRequest } from "@/lib/types";
 
 const STATUS_LABEL: Record<DebateStatus, string> = {
@@ -117,7 +117,7 @@ export default function Home() {
         <GoogleConnect
           connected={google.connected}
           loginUrl={googleLoginUrl()}
-          disconnectUrl={googleDisconnectUrl()}
+          onDisconnect={google.disconnect}
         />
         {google.connected && (
           <button
