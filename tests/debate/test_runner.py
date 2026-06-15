@@ -110,6 +110,30 @@ def test_run_debate_initialises_retry_fields(mock_council, mock_api_key, sample_
         assert stream_arg["best_effort_schedule"] is None
 
 
+def test_run_debate_forwards_custom_max_validation_attempts(
+    mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs
+):
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"finalize": {"schedule": Schedule(), "transcript": []}},
+        ])
+
+        list(run_debate(
+            tasks=sample_tasks,
+            busy_blocks=sample_busy,
+            preferences=sample_prefs,
+            thread_id="retry-custom",
+            api_key=mock_api_key,
+            council=mock_council,
+            max_validation_attempts=5,
+        ))
+
+        stream_arg = mock_graph.stream.call_args.args[0]
+        assert stream_arg["max_validation_attempts"] == 5
+
+
 def test_run_debate_done_event_carries_degraded_flag(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
     best = Schedule()
     with patch("weekforge.debate.runner.build_graph") as mock_build:

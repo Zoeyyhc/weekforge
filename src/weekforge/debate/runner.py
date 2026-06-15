@@ -39,12 +39,15 @@ def run_debate(
     Yields dicts with a 'type' key:
       - {"type": "debate_event", "round": int, "speaker": str, "content": str, "event_type": str}
       - {"type": "interrupt", "interrupt_reason": str, "proposals": dict, "thread_id": str}
-      - {"type": "done", "schedule": Schedule | None, "thread_id": str}
+      - {"type": "done", "schedule": Schedule | None, "degraded": bool,
+         "validation_warnings": str | None, "thread_id": str}
 
     A 'done' event is emitted only when the run completes. If the run pauses for
     human input, the final event is the 'interrupt' (no 'done').
 
     Args:
+        max_validation_attempts: Maximum validation retries before returning a
+            best-effort schedule as a degraded result.
         resume_value: When provided, resume an interrupted run for this thread_id by
             handing the value to the paused human_interrupt node. The graph reloads its
             saved state from the checkpointer, so tasks/busy_blocks/preferences are ignored.
