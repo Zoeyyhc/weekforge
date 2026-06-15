@@ -23,7 +23,7 @@ export function TaskRow({
   onChange: (patch: Partial<TaskDraft>) => void;
   onRemove: () => void;
 }) {
-  function handleDayClick(day: string) {
+  function handleDayClick(day: Weekday) {
     const idx = draft.preferredDays.indexOf(day);
     if (idx >= 0) {
       onChange({ preferredDays: draft.preferredDays.filter((d) => d !== day) });

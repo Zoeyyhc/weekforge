@@ -150,6 +150,7 @@ class GoogleCalendarWriter:
         blocks: list[TimeBlock],
         week_start: datetime,
         week_end: datetime,
+        time_zone: str | None = None,
     ) -> int:
         cal_id = self._client.find_calendar(self._calendar_name)
         if cal_id is None:
@@ -160,9 +161,24 @@ class GoogleCalendarWriter:
         for block in blocks:
             event = {
                 "summary": block.label,
-                "start": {"dateTime": block.start.isoformat()},
-                "end": {"dateTime": block.end.isoformat()},
+                "start": self._event_time(block.start, time_zone),
+                "end": self._event_time(block.end, time_zone),
             }
             self._client.insert_event(cal_id, event)
 
         return len(blocks)
+
+    @staticmethod
+    def _event_time(dt: datetime, time_zone: str | None) -> dict:
+        """Build a Google Calendar start/end time object.
+
+        Block times are wall-clock-local: the hour the scheduler chose (e.g. 09:00)
+        is the user's intended local time, even though it may carry a placeholder
+        UTC offset. When the caller knows the user's IANA zone we drop the offset
+        and pass `timeZone`, so Google anchors the event to that zone instead of
+        treating the placeholder offset as an absolute instant. Without a zone we
+        fall back to the original offset-bearing timestamp.
+        """
+        if time_zone:
+            return {"dateTime": dt.replace(tzinfo=None).isoformat(), "timeZone": time_zone}
+        return {"dateTime": dt.isoformat()}

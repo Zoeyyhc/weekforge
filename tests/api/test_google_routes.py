@@ -58,8 +58,11 @@ class FakeGoogleIntegration:
         self.last_calendar_ids = calendar_ids
         return self._busy
 
-    def export_schedule(self, blocks: list[TimeBlock], week_start: datetime) -> tuple[int, str]:
+    def export_schedule(
+        self, blocks: list[TimeBlock], week_start: datetime, time_zone: str | None = None
+    ) -> tuple[int, str]:
         self.last_export = blocks
+        self.last_time_zone = time_zone
         return len(blocks), "https://calendar.google.com/calendar/r/week"
 
 
@@ -212,6 +215,7 @@ def test_export_writes_blocks_and_returns_count(connected_client):
     client, fake = connected_client
     body = {
         "week_start": "2026-06-15T00:00:00+00:00",
+        "time_zone": "Australia/Sydney",
         "blocks": [
             {
                 "start": "2026-06-15T09:00:00+00:00",
@@ -228,6 +232,7 @@ def test_export_writes_blocks_and_returns_count(connected_client):
     assert "calendar_url" in data
     assert fake.last_export is not None
     assert fake.last_export[0].label == "Write report"
+    assert fake.last_time_zone == "Australia/Sydney"
 
 
 def test_export_requires_connected(unconnected_client):

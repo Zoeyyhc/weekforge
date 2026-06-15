@@ -8,3 +8,12 @@ build/
 .env
 .env.local
 .superpowers/
+
+# Node dependencies (stray root install)
+node_modules/
+
+# Local runtime artifacts & secrets — never commit
+*.db
+*.db-shm
+*.db-wal
+weekforge_tokens.json

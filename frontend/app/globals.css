@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  /* Core forge palette */
   --background: #0f1115;
   --surface: #16191f;
   --border: #2a2620;
@@ -8,6 +9,12 @@
   --muted: #8a8578;
   --ember: #ff6b35;
   --amber: #f5a623;
+
+  /* The four champions — signature glow hues (landing) */
+  --hawk: #fb5f7a;      /* Deadline Hawk — rose */
+  --guardian: #34d8a0;  /* Energy Guardian — emerald */
+  --batcher: #38c6e6;   /* Focus Batcher — cyan */
+  --arbiter: #a78bff;   /* Arbiter — violet */
 }
 
 @theme inline {
@@ -18,8 +25,15 @@
   --color-muted: var(--muted);
   --color-ember: var(--ember);
   --color-amber: var(--amber);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --color-hawk: var(--hawk);
+  --color-guardian: var(--guardian);
+  --color-batcher: var(--batcher);
+  --color-arbiter: var(--arbiter);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
 body {
@@ -28,7 +42,35 @@ body {
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Entrance animation for streamed debate messages. */
+/* ─────────────────────────────────────────────────────────────
+   Atmosphere: grain + molten gradient mesh utilities (landing)
+   ───────────────────────────────────────────────────────────── */
+
+/* Fine film grain overlay — apply to a fixed full-bleed layer. */
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Molten radial mesh — slowly drifting ember light pools. */
+.forge-mesh {
+  background:
+    radial-gradient(60% 50% at 18% 12%, rgba(255, 107, 53, 0.16), transparent 70%),
+    radial-gradient(45% 45% at 85% 18%, rgba(245, 166, 35, 0.12), transparent 70%),
+    radial-gradient(55% 60% at 70% 92%, rgba(255, 107, 53, 0.10), transparent 75%),
+    radial-gradient(40% 40% at 8% 85%, rgba(167, 139, 255, 0.08), transparent 70%);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Motion keyframes
+   ───────────────────────────────────────────────────────────── */
+
+/* Existing app entrance for streamed debate messages. */
 @keyframes rise-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -43,6 +85,81 @@ body {
 }
 .animate-forged { animation: forged-glow 1.1s ease-out both; }
 
+/* Landing: staggered entrance — fade + lift with a longer throw. */
+@keyframes forge-in {
+  from { opacity: 0; transform: translateY(22px); filter: blur(6px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+.animate-forge-in { animation: forge-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Landing: slow drift of the molten mesh background. */
+@keyframes mesh-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  50% { transform: translate3d(2%, -2%, 0) scale(1.12); }
+}
+.animate-mesh-drift { animation: mesh-drift 22s ease-in-out infinite; }
+
+/* Landing: breathing aura for the champion sigils. */
+@keyframes aura-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+.animate-aura { animation: aura-pulse 4.5s ease-in-out infinite; }
+
+/* Landing: champion sigil — base glow + hover "ignite". The card exposes its
+   signature hue as --c; hover intensifies the glyph and aura. */
+.champion-glyph {
+  filter: drop-shadow(0 0 6px var(--c));
+}
+.champion-aura {
+  opacity: 0.45;
+}
+.champion-card {
+  transition: border-color 0.4s ease, transform 0.4s ease,
+    box-shadow 0.4s ease;
+}
+.champion-card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in oklab, var(--c) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--c) 30%, transparent),
+    0 18px 60px -28px var(--c);
+}
+.champion-card:hover .champion-glyph {
+  transform: scale(1.09) rotate(-1deg);
+  filter: drop-shadow(0 0 16px var(--c)) drop-shadow(0 0 5px var(--c));
+}
+.champion-card:hover .champion-aura {
+  opacity: 0.85;
+}
+.champion-card .champion-accent {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.champion-card:hover .champion-accent {
+  transform: scaleX(1);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-rise-in, .animate-forged { animation: none; }
+  .champion-card:hover,
+  .champion-card:hover .champion-glyph {
+    transform: none;
+  }
+}
+
+/* Landing: rising ember particles. */
+@keyframes ember-rise {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-120px) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise-in,
+  .animate-forged,
+  .animate-forge-in,
+  .animate-mesh-drift,
+  .animate-aura {
+    animation: none;
+  }
 }

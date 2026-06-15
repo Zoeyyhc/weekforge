@@ -252,3 +252,31 @@ class TestGoogleCalendarWriter:
         count = writer.write_blocks(self._blocks(), _utc(2026, 6, 15), _utc(2026, 6, 22))
 
         assert count == 2
+
+    def test_writes_wall_clock_time_with_timezone_when_provided(self):
+        # The block's wall-clock hour (09:00) is the user's intended local time.
+        # With a timeZone, Google must receive a naive dateTime + the IANA zone,
+        # not the absolute UTC instant (which would shift the event).
+        client = FakeGoogleCalendarClient()
+        writer = GoogleCalendarWriter(client, calendar_name="WeekForge")
+
+        writer.write_blocks(
+            self._blocks(), _utc(2026, 6, 15), _utc(2026, 6, 22),
+            time_zone="Australia/Sydney",
+        )
+
+        start = client.inserted[0]["start"]
+        assert start["dateTime"] == "2026-06-15T09:00:00"  # no offset suffix
+        assert start["timeZone"] == "Australia/Sydney"
+        assert client.inserted[0]["end"]["timeZone"] == "Australia/Sydney"
+
+    def test_writes_offset_datetime_without_timezone_fallback(self):
+        # No timezone supplied -> preserve the original offset-bearing isoformat.
+        client = FakeGoogleCalendarClient()
+        writer = GoogleCalendarWriter(client, calendar_name="WeekForge")
+
+        writer.write_blocks(self._blocks(), _utc(2026, 6, 15), _utc(2026, 6, 22))
+
+        start = client.inserted[0]["start"]
+        assert start["dateTime"] == "2026-06-15T09:00:00+00:00"
+        assert "timeZone" not in start

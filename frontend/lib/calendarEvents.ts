@@ -28,3 +28,45 @@ export function calendarRange(blocks: TimeBlock[]): { min: Date; max: Date } | n
     max: new Date(Math.max(...ends) + THIRTY),
   };
 }
+
+export interface DayGroup {
+  /** Local YYYY-MM-DD key, used for sorting/keys. */
+  key: string;
+  /** Local midnight Date for the day, for header formatting. */
+  date: Date;
+  events: CalendarEvent[];
+}
+
+// Local-time YYYY-MM-DD so blocks land on the day the user sees, not the UTC day.
+function localDayKey(d: Date): string {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+/**
+ * Groups calendar events into per-day buckets, sorted chronologically by day and
+ * by start time within each day. Only days that contain events appear — empty
+ * days are dropped so the agenda has no dead space.
+ */
+export function groupEventsByDay(events: CalendarEvent[]): DayGroup[] {
+  const buckets = new Map<string, DayGroup>();
+  for (const e of events) {
+    const key = localDayKey(e.start);
+    let group = buckets.get(key);
+    if (!group) {
+      const date = new Date(e.start);
+      date.setHours(0, 0, 0, 0);
+      group = { key, date, events: [] };
+      buckets.set(key, group);
+    }
+    group.events.push(e);
+  }
+  const groups = [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key));
+  for (const g of groups) {
+    g.events.sort((a, b) => a.start.getTime() - b.start.getTime());
+  }
+  return groups;
+}

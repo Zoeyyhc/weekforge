@@ -11,7 +11,7 @@ afterEach(() => {
 
 describe("startDebate", () => {
   it("POSTs the request and returns the thread_id", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
       ok: true,
       json: async () => ({ thread_id: "abc123" }),
     }));
@@ -23,7 +23,7 @@ describe("startDebate", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("http://api/debate");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body).tasks[0].id).toBe("t1");
+    expect(JSON.parse(init.body as string).tasks[0].id).toBe("t1");
   });
 
   it("throws when the response is not ok", async () => {
@@ -36,14 +36,14 @@ describe("startDebate", () => {
 
 describe("sendIntervention", () => {
   it("POSTs the input to the intervene endpoint", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ status: "accepted" }) }));
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, json: async () => ({ status: "accepted" }) }));
     vi.stubGlobal("fetch", fetchMock);
 
     await sendIntervention("tid-1", "Prioritise the report", "http://api");
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("http://api/debate/tid-1/intervene");
-    expect(JSON.parse(init.body)).toEqual({ input: "Prioritise the report" });
+    expect(JSON.parse(init.body as string)).toEqual({ input: "Prioritise the report" });
   });
 });
 
@@ -70,10 +70,10 @@ describe("google calendar helpers", () => {
   });
 
   it("importBusy passes week_start and repeated calendar_ids", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ busy_blocks: [] }) }));
+    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => ({ busy_blocks: [] }) }));
     vi.stubGlobal("fetch", fetchMock);
     await importBusy("2026-06-15", ["a@x", "b@x"], "http://api");
-    const url = fetchMock.mock.calls[0][0] as string;
+    const url = fetchMock.mock.calls[0][0];
     expect(url).toContain("/calendar/google/busy?");
     expect(url).toContain("week_start=2026-06-15");
     expect(url).toContain("calendar_ids=a%40x");
@@ -81,16 +81,20 @@ describe("google calendar helpers", () => {
   });
 
   it("exportSchedule posts week_start and blocks, returns the result", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ written: 2, calendar_url: "u" }) }));
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, json: async () => ({ written: 2, calendar_url: "u" }) }));
     vi.stubGlobal("fetch", fetchMock);
     const res = await exportSchedule(
       "2026-06-15T00:00:00+00:00",
       [{ start: "s", end: "e", label: "L", task_id: "t1" }],
+      "Australia/Sydney",
       "http://api",
     );
     expect(res).toEqual({ written: 2, calendar_url: "u" });
-    const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse((init as RequestInit).body as string).blocks).toHaveLength(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://api/calendar/google/export");
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.blocks).toHaveLength(1);
+    expect(body.time_zone).toBe("Australia/Sydney");
   });
 
   it("googleDisconnectUrl builds the disconnect endpoint", () => {

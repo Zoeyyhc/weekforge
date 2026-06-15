@@ -1,23 +1,20 @@
 "use client";
 
-import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay } from "date-fns";
-import { enUS } from "date-fns/locale";
+import { format } from "date-fns";
 import { Schedule } from "@/lib/types";
-import { toCalendarEvents, calendarRange, CalendarEvent } from "@/lib/calendarEvents";
+import { toCalendarEvents, groupEventsByDay } from "@/lib/calendarEvents";
 
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  locales: { "en-US": enUS },
-});
+// "2h", "1h 30m", "45m" — compact, human-readable block length.
+function formatDuration(start: Date, end: Date): string {
+  const mins = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
 
 export function WeekCalendar({ schedule }: { schedule: Schedule }) {
-  const events = toCalendarEvents(schedule.blocks);
-  const range = calendarRange(schedule.blocks);
-
   if (schedule.blocks.length === 0) {
     return (
       <p className="text-sm text-muted" data-testid="schedule-empty">
@@ -26,47 +23,62 @@ export function WeekCalendar({ schedule }: { schedule: Schedule }) {
     );
   }
 
-  const defaultDate = new Date(schedule.blocks[0].start);
+  const events = toCalendarEvents(schedule.blocks);
+  const days = groupEventsByDay(events);
 
   return (
     <div
-      className="animate-forged rounded-xl border border-border overflow-hidden bg-surface"
-      style={{ height: 600 }}
+      className="animate-forged max-h-[560px] overflow-y-auto rounded-xl border border-border bg-surface"
       data-testid="week-calendar"
     >
-      <style>{`
-        .rbc-time-view, .rbc-time-header, .rbc-time-content { border-color: #2a2620; }
-        .rbc-today { background-color: rgba(245,166,35,0.06) !important; }
-        .rbc-header { border-bottom: 1px solid #2a2620; color: #8a8578; font-size: 0.75rem; font-weight: 600; padding: 6px 0; }
-        .rbc-time-header-content { border-left: 1px solid #2a2620; }
-        .rbc-timeslot-group { border-bottom: 1px solid #1d2026; }
-        .rbc-time-slot { color: #6f6a5e; font-size: 0.7rem; }
-        .rbc-label { color: #8a8578; }
-        .rbc-current-time-indicator { background-color: #ff6b35; }
-      `}</style>
-      <Calendar
-        localizer={localizer}
-        events={events}
-        defaultView="week"
-        views={["week"]}
-        toolbar={false}
-        defaultDate={defaultDate}
-        min={range?.min}
-        max={range?.max}
-        eventPropGetter={(event: object) => {
-          const e = event as CalendarEvent;
-          return {
-            style: {
-              backgroundColor: e.color,
-              borderColor: e.color,
-              color: "#0f1115",
-              borderRadius: "4px",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-            },
-          };
-        }}
-      />
+      <ol className="flex flex-col">
+        {days.map((day) => (
+          <li key={day.key}>
+            {/* Day header — sticks while its blocks scroll past. */}
+            <div className="sticky top-0 z-10 flex items-baseline justify-between border-b border-border bg-surface/95 px-3 py-2 backdrop-blur">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber">
+                {format(day.date, "EEE")}{" "}
+                <span className="text-muted">{format(day.date, "MMM d")}</span>
+              </span>
+              <span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted">
+                {day.events.length} {day.events.length === 1 ? "block" : "blocks"}
+              </span>
+            </div>
+
+            <ul className="flex flex-col">
+              {day.events.map((e, i) => (
+                <li
+                  key={i}
+                  className="group flex gap-3 px-3 py-2.5 transition-colors hover:bg-white/[0.025]"
+                >
+                  {/* Glowing colored spine keyed to the block. */}
+                  <span
+                    aria-hidden
+                    className="mt-0.5 w-[3px] shrink-0 self-stretch rounded-full"
+                    style={{
+                      backgroundColor: e.color,
+                      boxShadow: `0 0 8px -1px ${e.color}`,
+                    }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-semibold leading-snug text-foreground">
+                      {e.title}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[0.7rem] text-muted">
+                      <span>{format(e.start, "h:mm a")}</span>
+                      <span className="text-border">–</span>
+                      <span>{format(e.end, "h:mm a")}</span>
+                      <span className="ml-auto rounded bg-white/[0.04] px-1.5 py-0.5 text-[0.65rem] text-muted/90">
+                        {formatDuration(e.start, e.end)}
+                      </span>
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
