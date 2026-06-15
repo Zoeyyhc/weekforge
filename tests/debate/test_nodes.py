@@ -188,6 +188,7 @@ def test_validate_success_clears_stale_best_effort_metadata(base_state, mock_api
         "round_number": 2,
         "best_effort_schedule": stale_best_effort,
         "validation_warnings": "Schedule failed semantic validation:\n  - stale warning",
+        "degraded": True,
     }
 
     with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
@@ -202,6 +203,7 @@ def test_validate_success_clears_stale_best_effort_metadata(base_state, mock_api
 
     assert isinstance(result["schedule"], Schedule)
     assert result["validation_error"] is None
+    assert result["degraded"] is False
     assert result["validation_warnings"] is None
     assert result["best_effort_schedule"] is None
 
@@ -315,6 +317,28 @@ def test_finalize_returns_schedule_unchanged(base_state):
     state = {**base_state, "schedule": schedule}
     result = finalize_node(state)
     assert result["schedule"] is schedule
+
+
+def test_finalize_clean_schedule_clears_stale_best_effort_metadata(base_state):
+    block = TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10), label="Work")
+    schedule = Schedule(blocks=[block])
+    stale_best_effort = Schedule(
+        blocks=[TimeBlock(start=_utc(2026, 6, 15, 11), end=_utc(2026, 6, 15, 12), label="stale")]
+    )
+    state = {
+        **base_state,
+        "schedule": schedule,
+        "degraded": True,
+        "validation_warnings": "Schedule failed semantic validation:\n  - stale warning",
+        "best_effort_schedule": stale_best_effort,
+    }
+
+    result = finalize_node(state)
+
+    assert result["schedule"] is schedule
+    assert result["degraded"] is False
+    assert result["validation_warnings"] is None
+    assert result["best_effort_schedule"] is None
 
 
 def test_finalize_delivers_best_effort_when_no_valid_schedule(base_state):

@@ -355,6 +355,7 @@ def make_validate_node(api_key: str):
             return {
                 "schedule": Schedule(blocks=blocks),
                 "validation_error": None,
+                "degraded": False,
                 "validation_warnings": None,
                 "best_effort_schedule": None,
             }
@@ -405,4 +406,9 @@ def finalize_node(state: DebateState) -> dict:
                 ),
                 "transcript": [event],
             }
-    return {"schedule": schedule}
+    return {
+        "schedule": schedule,
+        "degraded": False,
+        "validation_warnings": None,
+        "best_effort_schedule": None,
+    }
