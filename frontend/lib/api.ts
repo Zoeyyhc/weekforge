@@ -65,6 +65,11 @@ export function googleDisconnectUrl(base: string = API_BASE): string {
   return `${base}/auth/google/disconnect`;
 }
 
+export async function googleDisconnect(base: string = API_BASE): Promise<void> {
+  const res = await fetch(`${base}/auth/google/disconnect`, { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to disconnect: ${res.status}`);
+}
+
 export async function listCalendars(base: string = API_BASE): Promise<CalendarInfo[]> {
   const res = await fetch(`${base}/calendar/google/calendars`);
   if (!res.ok) throw new Error(`Failed to list calendars: ${res.status}`);

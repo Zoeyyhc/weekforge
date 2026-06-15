@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { startDebate, sendIntervention, streamUrl } from "@/lib/api";
 import {
   googleStatus, googleLoginUrl, listCalendars, importBusy,
-  exportSchedule, googleDisconnectUrl,
+  exportSchedule, googleDisconnectUrl, googleDisconnect,
 } from "@/lib/api";
 
 afterEach(() => {
@@ -99,5 +99,16 @@ describe("google calendar helpers", () => {
 
   it("googleDisconnectUrl builds the disconnect endpoint", () => {
     expect(googleDisconnectUrl("http://api")).toBe("http://api/auth/google/disconnect");
+  });
+
+  it("googleDisconnect POSTs to the disconnect endpoint", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, json: async () => ({}) }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await googleDisconnect("http://api");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://api/auth/google/disconnect");
+    expect(init.method).toBe("POST");
   });
 });
