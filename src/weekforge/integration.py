@@ -70,20 +70,18 @@ class GoogleIntegration:
     def list_calendars(self) -> list[dict]:
         """Return the user's calendars for the import picker.
 
-        Excludes WeekForge's own output calendar (importing it would be
-        circular). Marks the primary calendar as selected-by-default.
+        All calendars are listed and selected by default so import captures
+        the full picture. The WeekForge output calendar is included — users
+        can deselect it in the picker if they want to exclude previous output.
         """
         result: list[dict] = []
         for c in self._client().list_calendars():
-            if c.get("summary") == self._calendar_name:
-                continue
-            is_primary = bool(c.get("primary", False))
             result.append(
                 {
                     "id": c["id"],
                     "summary": c.get("summary"),
-                    "primary": is_primary,
-                    "selected_by_default": is_primary,
+                    "primary": bool(c.get("primary", False)),
+                    "selected_by_default": True,
                 }
             )
         return result

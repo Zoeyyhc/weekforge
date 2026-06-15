@@ -43,7 +43,7 @@ def _make(client) -> GoogleIntegration:
     return google
 
 
-def test_list_calendars_excludes_weekforge_and_marks_primary_default():
+def test_list_calendars_includes_all_calendars_and_selects_all_by_default():
     client = FakeClient(calendars=[
         {"id": "najum@gmail.com", "summary": "najum@gmail.com", "primary": True},
         {"id": "holidays@x", "summary": "US Holidays"},
@@ -54,13 +54,12 @@ def test_list_calendars_excludes_weekforge_and_marks_primary_default():
     cals = google.list_calendars()
 
     summaries = [c["summary"] for c in cals]
-    assert "WeekForge" not in summaries  # our own output calendar excluded
-    assert summaries == ["najum@gmail.com", "US Holidays"]
+    # WeekForge calendar is now included — importing previous output is intentional
+    assert "WeekForge" in summaries
+    assert len(cals) == 3
 
-    primary = next(c for c in cals if c["id"] == "najum@gmail.com")
-    holidays = next(c for c in cals if c["id"] == "holidays@x")
-    assert primary["selected_by_default"] is True
-    assert holidays["selected_by_default"] is False
+    # All calendars default-selected so import picks up everything
+    assert all(c["selected_by_default"] for c in cals)
 
 
 def test_import_busy_defaults_to_primary_when_no_ids():
