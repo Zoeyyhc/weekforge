@@ -149,6 +149,10 @@ class GoogleCalendarProvider:
         blocks: list[TimeBlock] = []
         for calendar_id in self._calendar_ids:
             for e in self._client.list_events(calendar_id, start, end):
+                # WeekForge's own blocks are re-planned this week; never treat
+                # them as fixed busy time, or we re-import our own output.
+                if _is_weekforge_event(e):
+                    continue
                 label = e.get("summary") or "Busy"
                 blocks.append(
                     TimeBlock(start=e["start_dt"], end=e["end_dt"], label=label)

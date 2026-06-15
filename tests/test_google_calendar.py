@@ -76,8 +76,11 @@ class FakeGoogleCalendarClient:
 # GoogleCalendarProvider tests
 # ---------------------------------------------------------------------------
 
-def _gcal_event(summary: str, start: datetime, end: datetime, calendar_id: str = "primary") -> dict:
-    return {
+def _gcal_event(
+    summary: str, start: datetime, end: datetime,
+    calendar_id: str = "primary", marker: bool = False,
+) -> dict:
+    event = {
         "summary": summary,
         "start": {"dateTime": start.isoformat()},
         "end": {"dateTime": end.isoformat()},
@@ -85,6 +88,9 @@ def _gcal_event(summary: str, start: datetime, end: datetime, calendar_id: str =
         "end_dt": end,
         "_calendar_id": calendar_id,
     }
+    if marker:
+        event["extendedProperties"] = {"private": {"weekforge": "1"}}
+    return event
 
 
 def _allday_event(summary: str, date_str: str, calendar_id: str = "primary") -> dict:
@@ -180,6 +186,17 @@ class TestGoogleCalendarProvider:
 
         labels = sorted(b.label for b in blocks)
         assert labels == ["On primary", "On work"]
+
+    def test_skips_weekforge_marked_events_on_import(self):
+        client = FakeGoogleCalendarClient(events=[
+            _gcal_event("Standup", _utc(2026, 6, 15, 9), _utc(2026, 6, 15, 10)),  # foreign
+            _gcal_event("Old deep work", _utc(2026, 6, 15, 13), _utc(2026, 6, 15, 15), marker=True),  # self
+        ])
+        provider = GoogleCalendarProvider(client)
+
+        blocks = provider.get_busy_blocks(_utc(2026, 6, 15), _utc(2026, 6, 22))
+
+        assert [b.label for b in blocks] == ["Standup"]
 
 
 # ---------------------------------------------------------------------------
