@@ -166,6 +166,9 @@ def test_validate_sets_error_on_semantic_violation(base_state, mock_api_key):
     assert "semantic validation" in result["validation_error"]
     assert len(result["transcript"]) == 1
     assert result["transcript"][0]["event_type"] == "validation_fail"
+    # The visible transcript must surface WHICH rule failed, not just a generic line.
+    assert "before work window" in result["transcript"][0]["content"]
+    assert "Night work" in result["transcript"][0]["content"]
 
 
 def test_validate_sets_error_on_invalid_json(base_state, mock_api_key):

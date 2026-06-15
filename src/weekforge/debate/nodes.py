@@ -325,7 +325,7 @@ def make_validate_node(api_key: str):
                 event = {
                     "round": state["round_number"],
                     "speaker": "System",
-                    "content": "Schedule failed semantic validation. Retrying arbitration.",
+                    "content": f"{error_msg}\nRetrying arbitration.",
                     "event_type": "validation_fail",
                 }
                 return {"schedule": None, "validation_error": error_msg, "transcript": [event]}
