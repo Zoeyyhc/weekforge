@@ -36,7 +36,7 @@ def create_google_router(google) -> APIRouter:
     def auth_callback(code: str, state: str = ""):
         google.complete_login(code)
         frontend = google.frontend_url()
-        return RedirectResponse(url=f"{frontend}?google=connected", status_code=307)
+        return RedirectResponse(url=f"{frontend}/app?google=connected", status_code=307)
 
     @router.post("/auth/google/disconnect")
     def auth_disconnect():

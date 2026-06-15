@@ -137,7 +137,7 @@ def test_callback_completes_login_and_redirects_to_frontend(unconnected_client):
     client, fake = unconnected_client
     resp = client.get("/auth/google/callback?code=fake-code&state=s")
     assert resp.status_code == 307
-    assert resp.headers["location"].startswith("http://localhost:3000")
+    assert resp.headers["location"] == "http://localhost:3000/app?google=connected"
     assert fake.is_connected()
 
 
