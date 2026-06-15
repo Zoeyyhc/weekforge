@@ -89,47 +89,82 @@ Three logical rows per task:
 
 ### 3.1 Design direction
 
-Each of the three sections (Tasks, Busy Blocks, Preferences) becomes a standalone **forge card**: `bg-surface` background, `rounded-xl`, subtle `box-shadow`, and a **2px gradient top strip** that signals the section's character:
+Each of the three sections (Tasks, Busy Blocks, Preferences) becomes a standalone **forge card** with these properties:
 
-| Section | Top strip gradient | Rationale |
+- **Surface:** `bg-[#1c2030]` (slightly blue-grey shifted, not the bare `#16191f` surface token) — creates visible lift off the `#0f1115` page background
+- **Top highlight:** `box-shadow: inset 0 1px 0 rgba(255,255,255,0.04)` — simulates a light source hitting the top edge of each card, reinforcing the "forge table" tactility
+- **Border radius:** `rounded-xl`
+- **Left accent bar:** a **4px vertical bar** on the left edge (full card height) signals each section's identity — visible when scrolling, never hidden. Replaces the original 2px top strip (too thin, disappears on scroll).
+
+| Section | Left bar color | Rationale |
 |---|---|---|
-| ⚔ Tasks | rose → orange | Deadline Hawk's urgency |
-| 🗓 Busy Blocks | cyan → indigo | Calendar/commitment feel |
-| ⚙ Preferences | emerald → cyan | Energy/rhythm feel |
+| ⚔ Tasks | `#fb7185` → `#ff6b35` (rose → ember) | Deadline urgency; echoes Deadline Hawk |
+| 🗓 Busy Blocks | `#22d3ee` → `#6366f1` (cyan → indigo) | Calendar/commitment feel |
+| ⚙ Preferences | `#34d399` → `#22d3ee` (emerald → cyan) | Energy/rhythm feel |
+
+The left bar is implemented as `::before` pseudo-element or a `w-1 self-stretch rounded-l-xl bg-gradient-to-b` sibling div.
 
 ### 3.2 Input style
 
-Replace bordered input boxes with **underline inputs**: `border-0 border-b border-border bg-transparent focus:border-ember outline-none`. Lighter visual weight, integrates with the card surface rather than fighting it.
+Replace bordered input boxes with **underline inputs**: `border-0 border-b border-[#2a2620] bg-transparent focus:border-ember outline-none transition-colors`. Time and number values use `font-mono` (Geist Mono is already in the stack) — monospace makes time ranges and durations read as precise and intentional.
 
 ### 3.3 Section headers
 
 - Emoji prefix: ⚔ Tasks / 🗓 Busy Blocks / ⚙ Preferences
 - Color: `text-foreground` (not `slate-500` as today)
-- Font: `text-xs font-bold uppercase tracking-widest`
+- Font: `font-mono text-xs font-bold uppercase tracking-widest` — mono gives section labels an industrial stamp character
 - "＋ Add" button: `text-ember underline` style, right-aligned
 
-### 3.4 Deadline + preferred-day visual treatment in TaskRow
+### 3.4 Task sub-cards
 
-- **Deadline pill:** small rounded button, default `bg-surface border border-border text-muted`. When `hasDeadline=true`: `bg-rose-950/40 border-rose-400/60 text-rose-300`. Weekday `<select>` appears inline after the pill.
-- **Day pills:** `Mon Tue Wed Thu Fri Sat Sun` in a single flex row below. Default: `bg-surface text-muted border border-border`. ① selected: `bg-ember/20 text-ember border-ember/50` with `①` prefix. ② selected: `bg-amber/15 text-amber border-amber/40` with `②` prefix.
+Each task (all three rows: title+fields, deadline row, preferred-day row) is wrapped in its own **sub-card**: `rounded-lg border border-[#2a2620] bg-[#111318] p-3`. Tasks within the section are separated by `gap-2`. This ensures that as tasks expand with deadline/preferred-day rows, they remain visually contained and don't merge into an undifferentiated list.
 
-### 3.5 "Convene the Council" CTA
+### 3.5 Deadline + preferred-day visual treatment in TaskRow
 
-- Full-width button
+- **Deadline pill:** small rounded button, default `bg-[#1a1e26] border border-[#2a2620] text-[#4a4845]` (clearly "available but inactive"). When `hasDeadline=true`: `bg-rose-950/40 border-rose-400/60 text-rose-300 transition-colors duration-200`. Weekday `<select>` slides in inline after the pill with a CSS `max-width` transition.
+- **Day pills:** `Mon Tue Wed Thu Fri Sat Sun` in a flex row. States:
+  - Default: `bg-[#1a1e26] text-[#4a4845] border border-[#2a2620]`
+  - ① selected: `bg-ember/30 text-ember border-ember/60 shadow-[0_0_8px_rgba(255,107,53,0.3)]` with `①` prefix — glows
+  - ② selected: `bg-amber/25 text-amber border-amber/50` with `②` prefix
+  - Subtle `scale-105` on selection to signal the state change
+
+### 3.6 Priority select — color-coded
+
+P1 → `text-rose-400`, P2 → `text-amber`, P3 → `text-muted`, P4 → `text-[#3a3530]` (very dim). Urgency is legible at a glance without reading the label.
+
+### 3.7 Preferences — three-column instrument layout
+
+Replace the current flat inline inputs with **three instrument tiles** arranged in a row (`grid grid-cols-3 gap-3`), each a small `rounded-lg border border-[#2a2620] bg-[#111318] p-3` container:
+
+```
+[ 🕘 Start     ]  [ 🕕 End       ]  [ 🎯 Max Focus  ]
+[  font-mono   ]  [  font-mono   ]  [  font-mono    ]
+[    9  : 00   ]  [   18  : 00   ]  [   360  min    ]
+```
+
+Label (`font-mono text-[10px] uppercase tracking-widest text-muted`) sits above the value. The value is a `font-mono text-lg font-bold text-foreground` number input. This transforms Preferences from a form row into a dashboard panel.
+
+### 3.8 "Convene the Council" CTA
+
+Before the button, a decorative separator: `<div className="border-t border-ember/20" />` — gives the CTA a ritual threshold to cross.
+
+Button itself:
+- Full-width
 - `bg-gradient-to-br from-ember to-amber`
-- `text-[#1a0e00] font-black uppercase tracking-widest text-sm`
+- `text-[#1a0e00] font-black uppercase tracking-[0.2em] text-sm`
 - `shadow-[0_4px_24px_rgba(255,107,53,0.35)]`
+- Prefix `⚒` matching the war-room's "⚒ The forged week" label — visual continuity across phases
 - Becomes the undeniable visual endpoint of the form
 
-### 3.6 Files changed
+### 3.9 Files changed
 
-- `frontend/components/TaskForm.tsx` — card wrapper structure, section styles, CTA
-- `frontend/components/TaskRow.tsx` — new deadline + preferred-day UI rows, underline inputs
-- `frontend/components/BusyBlockRow.tsx` — underline input style to match
+- `frontend/components/TaskForm.tsx` — forge card structure, left bar accent, Preferences instrument grid, separator + CTA
+- `frontend/components/TaskRow.tsx` — sub-card wrapper, new deadline + preferred-day UI, color-coded priority, underline inputs, font-mono on time/number values
+- `frontend/components/BusyBlockRow.tsx` — underline input style + font-mono on time values to match
 
-### 3.7 Testing
+### 3.10 Testing
 
-Existing `TaskForm.test.tsx`, `TaskRow.test.tsx`, `BusyBlockRow.test.tsx` stay green (testids and props unchanged). Visual polish verified by manual smoke.
+Existing `TaskForm.test.tsx`, `TaskRow.test.tsx`, `BusyBlockRow.test.tsx` stay green (testids and props unchanged). Visual polish (card lift, left bar, pill glow, instrument tiles) verified by manual smoke.
 
 ---
 
