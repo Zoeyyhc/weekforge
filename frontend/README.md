@@ -18,12 +18,12 @@ useDebateStream (hook)
 debateReducer (pure)
   └── SSE frame → DebateState { status, events, interrupt, schedule, error }
 
-app/page.tsx        → marketing landing (Hero · four champion sigils · live-debate showcase)
+app/page.tsx        → marketing landing (Hero · Champions · HowItWorks · FinalCTA)
 app/app/page.tsx    → the debate tool, route /app
-  ├── idle      → TaskForm (JSON input, sample pre-filled)
-  ├── streaming → DebateTimeline (live round-by-round messages)
+  ├── idle      → TaskForm (stepped "Crucible Intake" wizard: Tasks → Busy Blocks → Preferences, sample pre-filled)
+  ├── streaming → DebateTimeline (live round-by-round messages, tabbed by round)
   ├── interrupted → InterventionPanel (quick-actions + free text → resume)
-  └── done      → ScheduleView (blocks grouped by day) + timeline transcript
+  └── done      → CouncilRoster + WeekCalendar (forged week, blocks grouped by day) + DebateTimeline transcript
 ```
 
 Routes: `/` is the landing page; `/app` is the live debate tool. Landing-only
@@ -50,7 +50,7 @@ Open http://localhost:3000 for the landing page. Click **Convene the council**
 ## Tests
 
 ```bash
-npm test          # 118 tests, all unit/integration (no network)
+npm test          # 119 tests, all unit/integration (no network)
 npm run test:watch
 ```
 
