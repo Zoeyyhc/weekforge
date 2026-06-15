@@ -10,6 +10,7 @@ export interface TaskDraft {
   hasDeadline: boolean;
   deadlineWeekday: Weekday;
   preferredDays: Weekday[]; // ordered, max 2: [firstChoice, secondChoice]
+  remark: string; // planner's note to themselves; UI-only, not sent to the council
 }
 
 export interface BusyBlockDraft {

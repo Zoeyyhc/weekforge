@@ -18,12 +18,16 @@ useDebateStream (hook)
 debateReducer (pure)
   └── SSE frame → DebateState { status, events, interrupt, schedule, error }
 
-app/page.tsx
+app/page.tsx        → marketing landing (Hero · four champion sigils · live-debate showcase)
+app/app/page.tsx    → the debate tool, route /app
   ├── idle      → TaskForm (JSON input, sample pre-filled)
   ├── streaming → DebateTimeline (live round-by-round messages)
   ├── interrupted → InterventionPanel (quick-actions + free text → resume)
   └── done      → ScheduleView (blocks grouped by day) + timeline transcript
 ```
+
+Routes: `/` is the landing page; `/app` is the live debate tool. Landing-only
+UI lives in `components/landing/`.
 
 Three agents debate (DeadlineHawk, EnergyGuardian, FocusBatcher), an Arbiter synthesises, and the user can step in as final arbiter at any stall point.
 
@@ -40,12 +44,13 @@ cp .env.local.example .env.local   # points at http://127.0.0.1:8000
 npm run dev
 ```
 
-Open http://localhost:3000. Click **Convene the council** to start a live debate.
+Open http://localhost:3000 for the landing page. Click **Convene the council**
+(or go straight to `/app`) to start a live debate.
 
 ## Tests
 
 ```bash
-npm test          # 33 tests, all unit/integration (no network)
+npm test          # 118 tests, all unit/integration (no network)
 npm run test:watch
 ```
 
@@ -53,4 +58,6 @@ Test stack: Vitest + React Testing Library + jsdom. The EventSource is stubbed w
 
 ## Tech stack
 
-Next.js (App Router) · TypeScript · Tailwind CSS · Vitest · React Testing Library
+Next.js (App Router) · TypeScript · Tailwind CSS v4 · Vitest · React Testing Library
+
+Type: Fraunces (display) · Hanken Grotesk (body) · JetBrains Mono — self-hosted via `next/font`.

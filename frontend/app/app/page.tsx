@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDebateStream } from "@/lib/useDebateStream";
 import { useGoogleCalendar } from "@/lib/useGoogleCalendar";
 import { useFreshActivity } from "@/lib/useFreshActivity";
 import { debateProgress } from "@/lib/debateProgress";
 import { TaskForm } from "@/components/TaskForm";
+import { ForgeLogo } from "@/components/ForgeLogo";
+import { AppAtmosphere } from "@/components/AppAtmosphere";
+import { ForgedModal } from "@/components/ForgedModal";
 import { DebateTimeline } from "@/components/DebateTimeline";
 import { DebateStatusBand } from "@/components/DebateStatusBand";
 import { CouncilRoster } from "@/components/CouncilRoster";
@@ -71,6 +74,20 @@ export default function Home() {
   const [importDone, setImportDone] = useState(false);
   const weekStart = currentWeekStart();
   const showForm = state.status === "idle";
+
+  // Celebrate the verdict exactly once per debate. Fires when the stream lands
+  // on "done"; the flag resets when the user starts over (status → idle).
+  const [showForged, setShowForged] = useState(false);
+  const forgedShownRef = useRef(false);
+  useEffect(() => {
+    if (state.status === "done" && !forgedShownRef.current) {
+      forgedShownRef.current = true;
+      setShowForged(true);
+    } else if (state.status === "idle") {
+      forgedShownRef.current = false;
+      setShowForged(false);
+    }
+  }, [state.status]);
   // A speaker is "live" only briefly after their event; during the silent
   // convergence/arbiter gaps the band/roster fall back to "deliberating…".
   const speakingActive = useFreshActivity(state.events.length, 3500);
@@ -95,8 +112,8 @@ export default function Home() {
   }
 
   const googleSlot = (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border border-[#272430] bg-gradient-to-b from-[#15171f] to-[#101219] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <GoogleConnect
           connected={google.connected}
           loginUrl={googleLoginUrl()}
@@ -107,9 +124,9 @@ export default function Home() {
             type="button"
             onClick={handleImport}
             disabled={importing}
-            className="text-sm font-medium text-amber underline disabled:opacity-50"
+            className="rounded-lg border border-guardian/40 bg-guardian/[0.08] px-3.5 py-2 text-sm font-semibold text-guardian transition-colors hover:border-guardian/70 hover:bg-guardian/15 disabled:opacity-50"
           >
-            {importing ? "Importing…" : "Import this week"}
+            {importing ? "Importing…" : "↓ Import this week"}
           </button>
         )}
       </div>
@@ -148,12 +165,15 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
-      <header className="mb-8 flex items-center justify-between">
+      <AppAtmosphere />
+      <header className="mb-8 flex items-end justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            WEEK<span className="text-ember">FORGE</span>
+          <h1 className="leading-none">
+            <ForgeLogo size="lg" href="/" />
           </h1>
-          <p className="mt-1 text-sm text-muted">forge your week in the crucible</p>
+          <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.28em] text-muted">
+            forge your week in the crucible
+          </p>
         </div>
         <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
           {STATUS_LABEL[state.status]}
@@ -198,6 +218,12 @@ export default function Home() {
           </section>
         </div>
       )}
+
+      <ForgedModal
+        open={showForged}
+        schedule={state.schedule}
+        onClose={() => setShowForged(false)}
+      />
     </main>
   );
 }

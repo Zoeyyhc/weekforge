@@ -10,13 +10,14 @@ function makeDraft(overrides: Partial<TaskDraft> = {}): TaskDraft {
     hasDeadline: false,
     deadlineWeekday: "Fri",
     preferredDays: [],
+    remark: "",
     ...overrides,
   };
 }
 
 const tasks: TaskDraft[] = [
-  { id: "d1", title: "Write Q3 report", estimatedMinutes: "180", priority: 1, hasDeadline: false, deadlineWeekday: "Fri", preferredDays: [] },
-  { id: "d2", title: "Review PRs", estimatedMinutes: "90", priority: 2, hasDeadline: false, deadlineWeekday: "Fri", preferredDays: [] },
+  { id: "d1", title: "Write Q3 report", estimatedMinutes: "180", priority: 1, hasDeadline: false, deadlineWeekday: "Fri", preferredDays: [], remark: "" },
+  { id: "d2", title: "Review PRs", estimatedMinutes: "90", priority: 2, hasDeadline: false, deadlineWeekday: "Fri", preferredDays: [], remark: "" },
 ];
 const blocks: BusyBlockDraft[] = [
   { id: "d3", label: "Standup", start: "2026-06-15T10:00", end: "2026-06-15T11:00" },
@@ -67,7 +68,7 @@ describe("buildRequest", () => {
 
   it("trims task titles and busy-block labels", () => {
     const req = buildRequest(
-      [{ id: "d4", title: "  Padded  ", estimatedMinutes: "30", priority: 3, hasDeadline: false, deadlineWeekday: "Fri", preferredDays: [] }],
+      [{ id: "d4", title: "  Padded  ", estimatedMinutes: "30", priority: 3, hasDeadline: false, deadlineWeekday: "Fri", preferredDays: [], remark: "" }],
       [{ id: "d5", label: "  Call  ", start: "2026-06-15T10:00", end: "2026-06-15T11:00" }],
       prefs,
     );

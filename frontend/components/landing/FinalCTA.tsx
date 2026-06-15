@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Reveal } from "@/components/landing/Reveal";
+import { ForgeLogo } from "@/components/ForgeLogo";
 
 // Closing statement: a last ember-lit invitation into the app, plus footer.
 export function FinalCTA() {
@@ -44,9 +45,7 @@ export function FinalCTA() {
       </Reveal>
 
       <footer className="mx-auto mt-16 flex max-w-6xl flex-col items-center justify-between gap-4 border-t border-border pt-8 text-xs text-muted sm:flex-row">
-        <span className="font-display text-base text-foreground/70">
-          WeekForge<span className="text-ember"> · Crucible</span>
-        </span>
+        <ForgeLogo size="sm" href="/" />
         <span className="font-mono tracking-wide">
           a transparent multi-agent council
         </span>
