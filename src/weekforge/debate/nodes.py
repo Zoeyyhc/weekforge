@@ -371,5 +371,30 @@ def make_validate_node(api_key: str):
 
 
 def finalize_node(state: DebateState) -> dict:
-    """Terminal node — passes the validated schedule through unchanged."""
-    return {"schedule": state["schedule"]}
+    """Terminal node.
+
+    Normally passes the validated schedule through. If validation never produced
+    a clean schedule but an earlier attempt parsed into blocks, deliver that
+    best-effort schedule flagged as degraded so the UI can mark it for review.
+    """
+    schedule = state.get("schedule")
+    if schedule is None:
+        best = state.get("best_effort_schedule")
+        if best is not None:
+            warning = (
+                f"Exceeded {state.get('max_validation_attempts', 3)} validation "
+                "retries; returning best-effort schedule (may contain semantic issues)."
+            )
+            event = {
+                "round": state["round_number"],
+                "speaker": "System",
+                "content": warning,
+                "event_type": "system",
+            }
+            return {
+                "schedule": best,
+                "degraded": True,
+                "validation_warnings": state.get("validation_error") or warning,
+                "transcript": [event],
+            }
+    return {"schedule": schedule}

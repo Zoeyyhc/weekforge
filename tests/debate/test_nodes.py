@@ -284,6 +284,30 @@ def test_finalize_returns_schedule_unchanged(base_state):
     assert result["schedule"] is schedule
 
 
+def test_finalize_delivers_best_effort_when_no_valid_schedule(base_state):
+    best = Schedule(blocks=[TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10), label="x")])
+    state = {
+        **base_state,
+        "schedule": None,
+        "best_effort_schedule": best,
+        "validation_error": "Schedule failed semantic validation:\n  - Block 'x': ...",
+        "max_validation_attempts": 3,
+        "round_number": 2,
+    }
+    result = finalize_node(state)
+    assert result["schedule"] is best
+    assert result["degraded"] is True
+    assert result["validation_warnings"]  # non-empty string
+    assert any(e["event_type"] == "system" for e in result["transcript"])
+
+
+def test_finalize_returns_none_when_no_schedule_and_no_best_effort(base_state):
+    state = {**base_state, "schedule": None, "best_effort_schedule": None}
+    result = finalize_node(state)
+    assert result["schedule"] is None
+    assert result.get("degraded") in (None, False)
+
+
 def test_fmt_tasks_includes_preferred_days_and_deadline(base_state):
     from weekforge.debate.nodes import _fmt_tasks
 
