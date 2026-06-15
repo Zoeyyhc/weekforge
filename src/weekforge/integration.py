@@ -96,12 +96,12 @@ class GoogleIntegration:
         return provider.get_busy_blocks(week_start, week_end)
 
     def export_schedule(
-        self, blocks: list[TimeBlock], week_start: datetime
+        self, blocks: list[TimeBlock], week_start: datetime, time_zone: str | None = None
     ) -> tuple[int, str]:
         """Write blocks to the WeekForge calendar. Returns (written_count, calendar_url)."""
         week_end = week_start + timedelta(days=7)
         writer = GoogleCalendarWriter(self._client(), calendar_name=self._calendar_name)
-        count = writer.write_blocks(blocks, week_start, week_end)
+        count = writer.write_blocks(blocks, week_start, week_end, time_zone=time_zone)
         calendar_url = "https://calendar.google.com/calendar/r/week"
         return count, calendar_url
 
@@ -132,5 +132,7 @@ class UnconfiguredGoogleIntegration:
     ) -> list[TimeBlock]:
         raise RuntimeError("Google Calendar is not configured")
 
-    def export_schedule(self, blocks: list[TimeBlock], week_start: datetime) -> tuple[int, str]:
+    def export_schedule(
+        self, blocks: list[TimeBlock], week_start: datetime, time_zone: str | None = None
+    ) -> tuple[int, str]:
         raise RuntimeError("Google Calendar is not configured")

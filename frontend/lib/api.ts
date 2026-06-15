@@ -89,12 +89,13 @@ export async function importBusy(
 export async function exportSchedule(
   weekStart: string,
   blocks: TimeBlock[],
+  timeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
   base: string = API_BASE,
 ): Promise<ExportResult> {
   const res = await fetch(`${base}/calendar/google/export`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ week_start: weekStart, blocks }),
+    body: JSON.stringify({ week_start: weekStart, blocks, time_zone: timeZone }),
   });
   if (!res.ok) throw new Error(`Failed to export schedule: ${res.status}`);
   return (await res.json()) as ExportResult;

@@ -14,6 +14,9 @@ from weekforge.models import TimeBlock
 class ExportRequest(BaseModel):
     week_start: datetime
     blocks: list[TimeBlock]
+    # Browser IANA timezone (e.g. "Australia/Sydney"). Block times are wall-clock
+    # local, so we anchor the Google events to this zone instead of UTC.
+    time_zone: str | None = None
 
 
 def create_google_router(google) -> APIRouter:
@@ -60,7 +63,9 @@ def create_google_router(google) -> APIRouter:
     def calendar_export(request: ExportRequest):
         if not google.is_connected():
             raise HTTPException(status_code=403, detail="Not connected to Google Calendar")
-        count, url = google.export_schedule(request.blocks, request.week_start)
+        count, url = google.export_schedule(
+            request.blocks, request.week_start, time_zone=request.time_zone
+        )
         return {"written": count, "calendar_url": url}
 
     return router

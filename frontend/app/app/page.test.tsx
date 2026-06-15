@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import Home from "@/app/page";
+import Home from "./page";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ connected: false }) })));

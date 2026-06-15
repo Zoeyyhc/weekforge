@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCalendarEvents, calendarRange } from "@/lib/calendarEvents";
+import { toCalendarEvents, calendarRange, groupEventsByDay } from "@/lib/calendarEvents";
 import { TimeBlock } from "@/lib/types";
 
 const BLOCKS: TimeBlock[] = [
@@ -29,6 +29,31 @@ describe("toCalendarEvents", () => {
     expect(events[3].color).toBe("#8b5cf6"); // index 3 → violet
     expect(events[4].color).toBe("#f97316"); // index 4 → orange
     expect(events[5].color).toBe("#f43f5e"); // index 5 wraps back to rose
+  });
+});
+
+describe("groupEventsByDay", () => {
+  // Local-time strings so day bucketing is deterministic across timezones.
+  const LOCAL: TimeBlock[] = [
+    { label: "Review PRs",   start: "2026-06-15T14:00:00.000", end: "2026-06-15T17:00:00.000", task_id: "t2" },
+    { label: "Write report", start: "2026-06-15T09:00:00.000", end: "2026-06-15T11:00:00.000", task_id: "t1" },
+    { label: "Deep Work",    start: "2026-06-16T10:00:00.000", end: "2026-06-16T13:00:00.000", task_id: "t3" },
+  ];
+
+  it("buckets events into one group per local day, in chronological order", () => {
+    const groups = groupEventsByDay(toCalendarEvents(LOCAL));
+    expect(groups.map((g) => g.key)).toEqual(["2026-06-15", "2026-06-16"]);
+    expect(groups[0].events).toHaveLength(2);
+    expect(groups[1].events).toHaveLength(1);
+  });
+
+  it("sorts events within a day by start time", () => {
+    const groups = groupEventsByDay(toCalendarEvents(LOCAL));
+    expect(groups[0].events.map((e) => e.title)).toEqual(["Write report", "Review PRs"]);
+  });
+
+  it("returns an empty array for no events", () => {
+    expect(groupEventsByDay([])).toEqual([]);
   });
 });
 
