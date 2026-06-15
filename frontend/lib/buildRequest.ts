@@ -9,7 +9,7 @@ export interface TaskDraft {
   priority: number;
   hasDeadline: boolean;
   deadlineWeekday: Weekday;
-  preferredDays: string[]; // ordered, max 2: [firstChoice, secondChoice]
+  preferredDays: Weekday[]; // ordered, max 2: [firstChoice, secondChoice]
 }
 
 export interface BusyBlockDraft {

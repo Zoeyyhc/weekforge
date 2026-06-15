@@ -32,8 +32,10 @@ export function DebateTimeline({
   }, [latestRound, status]);
 
   function handleTabClick(round: number) {
-    // Clicking the latest-round tab while streaming re-enables auto-follow
-    userSelectedRef.current = !(status === "streaming" && round === latestRound);
+    if (status === "streaming") {
+      // Re-enable auto-follow when clicking the latest round; opt out otherwise
+      userSelectedRef.current = round !== latestRound;
+    }
     setActiveTab(round);
   }
 
