@@ -18,6 +18,13 @@ describe("DebateMessage", () => {
     expect(screen.getByText("Energy Guardian")).toBeInTheDocument();
     expect(screen.getByText("Protect the mornings")).toBeInTheDocument();
   });
+
+  it("renders markdown bold as a <strong> element", () => {
+    render(<DebateMessage event={mk(1, "This is **important**")} />);
+    const strong = document.querySelector("strong");
+    expect(strong).not.toBeNull();
+    expect(strong?.textContent).toBe("important");
+  });
 });
 
 describe("DebateTimeline", () => {
