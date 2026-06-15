@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Generator, TypedDict
+from typing import Any, Generator, NotRequired, TypedDict
 
 from langgraph.types import Command
 
@@ -16,6 +16,8 @@ class DebateResult(TypedDict):
     thread_id: str
     schedule: Schedule | None
     transcript: list[dict]
+    degraded: NotRequired[bool]
+    validation_warnings: NotRequired[str | None]
 
 
 def run_debate(
@@ -26,6 +28,7 @@ def run_debate(
     api_key: str,
     council: Council,
     max_rounds: int = 3,
+    max_validation_attempts: int = 3,
     db_path: str = "weekforge.db",
     resume_value: str | None = None,
     require_human_on_stall: bool = True,
@@ -65,6 +68,9 @@ def run_debate(
             busy_blocks=busy_blocks,
             preferences=preferences,
             max_rounds=max_rounds,
+            validation_attempts=0,
+            max_validation_attempts=max_validation_attempts,
+            best_effort_schedule=None,
             week_start=week_start,
             round_number=0,
             proposals={},
@@ -79,6 +85,8 @@ def run_debate(
         )
 
     final_schedule: Schedule | None = None
+    degraded = False
+    validation_warnings: str | None = None
     interrupted = False
 
     try:
@@ -111,9 +119,18 @@ def run_debate(
                     }
                 if "schedule" in node_output and node_output["schedule"] is not None:
                     final_schedule = node_output["schedule"]
+                if node_output.get("degraded"):
+                    degraded = True
+                    validation_warnings = node_output.get("validation_warnings")
 
         if not interrupted:
-            yield {"type": "done", "schedule": final_schedule, "thread_id": thread_id}
+            yield {
+                "type": "done",
+                "schedule": final_schedule,
+                "degraded": degraded,
+                "validation_warnings": validation_warnings,
+                "thread_id": thread_id,
+            }
     finally:
         # build_graph opens a per-call SQLite connection for the checkpointer;
         # close it so repeated HTTP stream requests don't leak file descriptors.
