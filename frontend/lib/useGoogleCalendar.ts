@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   googleStatus, googleDisconnect, listCalendars, importBusy, CalendarInfo,
 } from "@/lib/api";
@@ -22,6 +22,9 @@ export function useGoogleCalendar(base?: string): UseGoogleCalendar {
   const [statusKnown, setStatusKnown] = useState(false);
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Ref mirrors selectedIds so importWeek always reads the latest value even
+  // when called immediately after loadCalendars (before the next render).
+  const selectedIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
     googleStatus(base)
@@ -31,19 +34,23 @@ export function useGoogleCalendar(base?: string): UseGoogleCalendar {
 
   const loadCalendars = useCallback(async () => {
     const cals = await listCalendars(base);
+    const ids = cals.filter((c) => c.selected_by_default).map((c) => c.id);
+    selectedIdsRef.current = ids;
     setCalendars(cals);
-    setSelectedIds(cals.filter((c) => c.selected_by_default).map((c) => c.id));
+    setSelectedIds(ids);
   }, [base]);
 
   const toggleCalendar = useCallback((id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setSelectedIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      selectedIdsRef.current = next;
+      return next;
+    });
   }, []);
 
   const importWeek = useCallback(
-    (weekStart: string) => importBusy(weekStart, selectedIds, base),
-    [selectedIds, base],
+    (weekStart: string) => importBusy(weekStart, selectedIdsRef.current, base),
+    [base],
   );
 
   const disconnect = useCallback(async () => {

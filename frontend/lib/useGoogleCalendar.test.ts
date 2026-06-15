@@ -54,6 +54,23 @@ describe("useGoogleCalendar", () => {
     expect(blocks![0].label).toBe("Standup");
   });
 
+  it("importWeek uses freshly loaded calendar IDs even without a re-render", async () => {
+    // Simulates handleImport calling loadCalendars() then importWeek() in the
+    // same async function — the importWeek closure would have stale selectedIds=[]
+    // without the ref, so the correct IDs would never reach the API.
+    const fetchSpy = vi.mocked(fetch);
+    const { result } = renderHook(() => useGoogleCalendar("http://api"));
+    await act(async () => {
+      await result.current.loadCalendars();
+      await result.current.importWeek("2026-06-15");
+    });
+    const busyCall = fetchSpy.mock.calls.find(([url]) =>
+      String(url).includes("/calendar/google/busy"),
+    );
+    expect(busyCall).toBeDefined();
+    expect(String(busyCall![0])).toContain("calendar_ids=p");
+  });
+
   it("disconnect POSTs and sets connected to false", async () => {
     const { result } = renderHook(() => useGoogleCalendar("http://api"));
     await waitFor(() => expect(result.current.connected).toBe(true));
