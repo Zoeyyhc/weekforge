@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from weekforge.integration import GoogleIntegration
+from weekforge.models import TimeBlock
 
 
 class _FakeStore:
@@ -26,6 +27,8 @@ class FakeClient:
     def __init__(self, calendars=None, events=None):
         self._calendars = calendars or []
         self._events = events or []
+        self.inserted = []
+        self.deleted = []
 
     def list_calendars(self):
         return self._calendars
@@ -36,9 +39,17 @@ class FakeClient:
             if e["_calendar_id"] == calendar_id and e["start_dt"] < end and e["end_dt"] > start
         ]
 
+    def insert_event(self, calendar_id, event):
+        event["_calendar_id"] = calendar_id
+        self.inserted.append(event)
+        return f"evt-{len(self.inserted)}"
+
+    def delete_events_in_range(self, calendar_id, start, end, private_extended_property=None):
+        self.deleted.append((calendar_id, private_extended_property))
+
 
 def _make(client) -> GoogleIntegration:
-    google = GoogleIntegration(token_store=_FakeStore(), calendar_name="WeekForge")
+    google = GoogleIntegration(token_store=_FakeStore())
     google._client = lambda: client  # inject fake client
     return google
 
@@ -88,3 +99,17 @@ def test_import_busy_reads_selected_calendars():
     blocks = google.import_busy(_utc(2026, 6, 15), calendar_ids=["primary", "work@x"])
 
     assert sorted(b.label for b in blocks) == ["On primary", "On work"]
+
+
+def test_export_schedule_writes_marked_event_to_primary():
+    client = FakeClient()
+    google = _make(client)
+    blocks = [TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10),
+                        label="Deep work", task_id="t1")]
+
+    count, url = google.export_schedule(blocks, _utc(2026, 6, 15))
+
+    assert count == 1
+    assert client.inserted[0]["_calendar_id"] == "primary"
+    assert client.inserted[0]["extendedProperties"]["private"]["weekforge"] == "1"
+    assert client.deleted == [("primary", "weekforge=1")]
