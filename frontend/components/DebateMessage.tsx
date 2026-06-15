@@ -13,19 +13,24 @@ const EVENT_LABEL: Record<string, string> = {
 
 export function DebateMessage({ event }: { event: DebateEventMsg }) {
   const meta = agentMeta(event.speaker);
+  const hue = meta.hue;
   return (
     <div
-      className={`animate-rise-in rounded-lg border-l-2 p-3 ${meta.color} ${meta.ring}`}
+      className={`animate-rise-in relative overflow-hidden rounded-xl border-l-2 p-3.5 pl-4 ${meta.color} ${meta.ring}`}
       data-testid="debate-message"
+      style={hue ? { boxShadow: `inset 2px 0 12px -8px ${hue}` } : undefined}
     >
-      <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
-        <span aria-hidden>{meta.emoji}</span>
-        <span>{meta.label}</span>
-        <span className="text-xs font-normal opacity-70">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span aria-hidden className="text-[0.95rem] leading-none">{meta.emoji}</span>
+        <span className="font-display text-[0.95rem] leading-none">{meta.label}</span>
+        <span
+          className="font-mono text-[0.62rem] uppercase tracking-[0.16em] opacity-70"
+          style={hue ? { color: hue } : undefined}
+        >
           {EVENT_LABEL[event.event_type] ?? event.event_type}
         </span>
       </div>
-      <div className="text-sm leading-relaxed [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_strong]:font-bold [&_h3]:font-semibold [&_h3]:text-base [&_h3]:mb-1 [&_h4]:font-semibold [&_h4]:mb-1 [&_p]:mb-1 last:[&_p]:mb-0">
+      <div className="font-sans text-sm leading-relaxed [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_strong]:font-bold [&_h3]:font-semibold [&_h3]:text-base [&_h3]:mb-1 [&_h4]:font-semibold [&_h4]:mb-1 [&_p]:mb-1 last:[&_p]:mb-0">
         <ReactMarkdown>{event.content}</ReactMarkdown>
       </div>
     </div>

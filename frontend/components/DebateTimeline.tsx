@@ -43,7 +43,7 @@ export function DebateTimeline({
     <div className="flex flex-col gap-3" data-testid="debate-timeline">
       {roundNumbers.length > 0 && (
         <div
-          className="flex gap-1 border-b border-border pb-2 overflow-x-auto"
+          className="scroll-forge flex gap-1.5 overflow-x-auto border-b border-border pb-2"
           role="tablist"
           aria-label="Debate rounds"
         >
@@ -57,26 +57,34 @@ export function DebateTimeline({
                 aria-selected={isActive}
                 data-testid={`round-tab-${round}`}
                 onClick={() => handleTabClick(round)}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
+                className={`relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-1.5 font-mono text-[0.7rem] font-semibold uppercase tracking-[0.14em] transition-all duration-300 ${
                   isActive
-                    ? "bg-surface text-foreground border border-border"
-                    : "text-muted hover:text-foreground"
+                    ? "border border-ember/40 bg-ember/[0.07] text-amber shadow-[0_0_18px_-8px_var(--ember)]"
+                    : "border border-transparent text-muted hover:text-foreground"
                 }`}
               >
-                Round {round}
+                <span>Round {round}</span>
                 {isLive && (
                   <span
-                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber"
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber shadow-[0_0_6px_var(--amber)]"
                     data-testid="live-dot"
                   />
                 )}
+                {/* Molten underline that ignites under the active round. */}
+                <span
+                  aria-hidden
+                  className={`absolute inset-x-2 -bottom-[9px] h-px origin-center bg-gradient-to-r from-transparent via-ember to-transparent transition-transform duration-300 ${
+                    isActive ? "scale-x-100" : "scale-x-0"
+                  }`}
+                />
               </button>
             );
           })}
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      {/* Re-keyed on the active round so a switch re-triggers the settle-in. */}
+      <div key={activeTab} className="animate-round-settle flex flex-col gap-2">
         {(rounds.get(activeTab) ?? []).map((event, i) => (
           <DebateMessage key={i} event={event} />
         ))}

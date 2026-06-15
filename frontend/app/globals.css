@@ -138,6 +138,47 @@ body {
 }
 .animate-aura { animation: aura-pulse 4.5s ease-in-out infinite; }
 
+/* ─────────────────────────────────────────────────────────────
+   Themed scrollbar — molten thumb on a near-invisible track, so
+   scrollable surfaces (the forged week) stay inside the forge world
+   instead of falling back to the OS's grey bar.
+   ───────────────────────────────────────────────────────────── */
+.scroll-forge {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 166, 35, 0.4) transparent;
+}
+.scroll-forge::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.scroll-forge::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-forge::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  background-color: rgba(245, 166, 35, 0.32);
+  background-image: linear-gradient(180deg, rgba(255, 107, 53, 0.55), rgba(245, 166, 35, 0.4));
+}
+.scroll-forge::-webkit-scrollbar-thumb:hover {
+  background-image: linear-gradient(180deg, rgba(255, 107, 53, 0.85), rgba(245, 166, 35, 0.65));
+}
+
+/* Roster: the active champion's row breathes a low ember glow. */
+@keyframes roster-ignite {
+  0%, 100% { box-shadow: 0 0 0 1px var(--ring-c), 0 0 18px -6px var(--ring-c); }
+  50% { box-shadow: 0 0 0 1px var(--ring-c), 0 0 26px -4px var(--ring-c); }
+}
+.animate-roster-ignite { animation: roster-ignite 3.2s ease-in-out infinite; }
+
+/* Round tabs: the active round's content settles in when switched. */
+@keyframes round-settle {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+.animate-round-settle { animation: round-settle 0.34s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 /* Landing: champion sigil — base glow + hover "ignite". The card exposes its
    signature hue as --c; hover intensifies the glyph and aura. */
 .champion-glyph {
@@ -210,7 +251,9 @@ body {
   .animate-step-in,
   .animate-inscribe,
   .animate-mesh-drift,
-  .animate-aura {
+  .animate-aura,
+  .animate-roster-ignite,
+  .animate-round-settle {
     animation: none;
   }
 }

@@ -185,11 +185,18 @@ export default function Home() {
       {!showForm && (
         <div className="flex flex-col gap-6 md:flex-row md:items-start">
           {/* Left rail: council + forged week */}
-          <aside className="flex w-full flex-col gap-4 md:w-72 md:shrink-0">
-            <CouncilRoster roster={progress.roster} />
+          <aside className="flex w-full flex-col gap-5 md:w-72 md:shrink-0">
+            <div className="flex flex-col gap-2.5">
+              <h2 className="font-mono text-[10px] uppercase tracking-[0.32em] text-amber/80">
+                ⚒ The council
+              </h2>
+              <CouncilRoster roster={progress.roster} />
+            </div>
             {state.schedule && state.status === "done" && (
-              <div className="flex flex-col gap-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-amber">⚒ The forged week</h2>
+              <div className="flex flex-col gap-2.5">
+                <h2 className="font-mono text-[10px] uppercase tracking-[0.32em] text-amber/80">
+                  ⚒ The forged week
+                </h2>
                 <WeekCalendar schedule={state.schedule} />
                 {google.connected && (
                   <ExportButton
@@ -198,8 +205,11 @@ export default function Home() {
                 )}
               </div>
             )}
-            <button onClick={reset} className="self-start text-sm text-muted underline">
-              Start over
+            <button
+              onClick={reset}
+              className="self-start font-mono text-[0.7rem] uppercase tracking-[0.16em] text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              ↺ Start over
             </button>
           </aside>
 
