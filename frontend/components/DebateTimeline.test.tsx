@@ -76,6 +76,43 @@ describe("DebateTimeline", () => {
     expect(screen.queryByText("R1")).not.toBeInTheDocument();
   });
 
+  it("pins view to the clicked tab and does not auto-follow when user selects an earlier round", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <DebateTimeline events={[mk(1, "R1"), mk(2, "R2")]} status="streaming" />
+    );
+    // User clicks Round 1 to opt out of auto-follow
+    await user.click(screen.getByTestId("round-tab-1"));
+    expect(screen.getByText("R1")).toBeInTheDocument();
+
+    // A new round arrives but view should NOT chase to it
+    rerender(
+      <DebateTimeline events={[mk(1, "R1"), mk(2, "R2"), mk(3, "R3")]} status="streaming" />
+    );
+    expect(screen.getByText("R1")).toBeInTheDocument();
+    expect(screen.queryByText("R3")).not.toBeInTheDocument();
+  });
+
+  it("re-enables auto-follow when user clicks the latest round tab while streaming", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <DebateTimeline events={[mk(1, "R1"), mk(2, "R2")]} status="streaming" />
+    );
+    // First click an earlier tab to opt out
+    await user.click(screen.getByTestId("round-tab-1"));
+    expect(screen.getByText("R1")).toBeInTheDocument();
+
+    // Click the latest tab to re-enable auto-follow
+    await user.click(screen.getByTestId("round-tab-2"));
+
+    // A new round arrives — should now auto-follow
+    rerender(
+      <DebateTimeline events={[mk(1, "R1"), mk(2, "R2"), mk(3, "R3")]} status="streaming" />
+    );
+    expect(screen.getByText("R3")).toBeInTheDocument();
+    expect(screen.queryByText("R1")).not.toBeInTheDocument();
+  });
+
   it("shows a live pulse dot on the latest round tab while streaming", () => {
     render(
       <DebateTimeline events={[mk(1, "R1"), mk(2, "R2")]} status="streaming" />
