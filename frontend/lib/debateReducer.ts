@@ -8,6 +8,8 @@ export interface DebateState {
   interrupt: InterruptMsg | null;
   schedule: Schedule | null;
   error: string | null;
+  degraded: boolean;
+  validationWarnings: string | null;
 }
 
 export const initialDebateState: DebateState = {
@@ -16,6 +18,8 @@ export const initialDebateState: DebateState = {
   interrupt: null,
   schedule: null,
   error: null,
+  degraded: false,
+  validationWarnings: null,
 };
 
 export type DebateAction =
@@ -37,7 +41,14 @@ export function debateReducer(state: DebateState, action: DebateAction): DebateS
         case "interrupt":
           return { ...state, status: "interrupted", interrupt: m };
         case "done":
-          return { ...state, status: "done", schedule: m.schedule, interrupt: null };
+          return {
+            ...state,
+            status: "done",
+            schedule: m.schedule,
+            interrupt: null,
+            degraded: m.degraded ?? false,
+            validationWarnings: m.validation_warnings ?? null,
+          };
         case "error":
           return { ...state, status: "error", error: m.message };
         default:

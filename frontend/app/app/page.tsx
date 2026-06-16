@@ -294,6 +294,8 @@ export default function Home() {
       <ForgedModal
         open={showForged}
         schedule={state.schedule}
+        degraded={state.degraded}
+        validationWarnings={state.validationWarnings}
         onClose={() => setShowForged(false)}
       />
     </main>

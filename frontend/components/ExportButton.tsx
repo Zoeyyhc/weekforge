@@ -34,9 +34,14 @@ export function ExportButton({
       >
         {busy ? "Adding…" : "Add to Google Calendar"}
       </button>
+      <p className="text-xs leading-relaxed text-muted" data-testid="export-safety-note">
+        WeekForge only adds and updates its own blocks — your existing events are never
+        changed.
+      </p>
       {result && (
         <p className="text-sm text-emerald-300" data-testid="export-result">
-          Wrote {result.written} events.{" "}
+          Wrote {result.written} events. Refreshed WeekForge&apos;s own blocks and left
+          everything else untouched.{" "}
           <a href={result.calendar_url} className="underline" target="_blank" rel="noreferrer">
             Open Google Calendar
           </a>
