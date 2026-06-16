@@ -51,12 +51,13 @@ describe("buildRequest", () => {
     expect(new Date(block.end).getTime()).toBe(new Date("2026-06-15T11:00").getTime());
   });
 
-  it("maps preferences to numbers", () => {
+  it("maps preferences to numbers and sends the local timezone", () => {
     const req = buildRequest(tasks, blocks, prefs);
     expect(req.preferences).toEqual({
       workday_start_hour: 9,
       workday_end_hour: 18,
       max_focus_minutes_per_day: 360,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   });
 
