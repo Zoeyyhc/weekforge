@@ -148,6 +148,75 @@ def test_arbitrate_context_injects_prefs_busy_and_hard_constraints(base_state):
     assert "23:59" in ctx
 
 
+class _CaptureCouncil:
+    """Council stub that records the context passed to arbitrate()."""
+
+    def __init__(self):
+        self.last_context = None
+
+    def arbitrate(self, context: str) -> str:
+        self.last_context = context
+        return "[]"
+
+
+def test_arbitrate_injects_frozen_blocks_and_budget(base_state):
+    council = _CaptureCouncil()
+    frozen = [
+        TimeBlock(
+            start=_utc(2026, 6, 15, 9),
+            end=_utc(2026, 6, 15, 11),
+            label="Write report",
+            task_id="t1",
+        )
+    ]
+    state = {
+        **base_state,
+        "frozen_blocks": frozen,
+        "validation_error": "BROKEN (re-place these only):\n  - Review PRs: before work window 09:00",
+        "round_number": 1,
+        "preferences": Preferences(
+            workday_start_hour=9,
+            workday_end_hour=18,
+            max_focus_minutes_per_day=360,
+            timezone=None,
+        ),
+    }
+
+    make_arbitrate_node(council)(state)
+    ctx = council.last_context
+
+    assert "SCOPED REPAIR" in ctx
+    assert "Write report" in ctx
+    assert "Do NOT move" in ctx
+    assert "240min left" in ctx
+    assert "broken" in ctx.lower()
+
+
+def test_arbitrate_first_pass_has_no_scoped_section(base_state):
+    council = _CaptureCouncil()
+    state = {**base_state, "round_number": 0}
+    make_arbitrate_node(council)(state)
+    assert "SCOPED REPAIR" not in council.last_context
+
+
+def test_arbitrate_non_retry_with_frozen_blocks_has_no_scoped_section(base_state):
+    council = _CaptureCouncil()
+    state = {
+        **base_state,
+        "round_number": 1,
+        "frozen_blocks": [
+            TimeBlock(
+                start=_utc(2026, 6, 15, 9),
+                end=_utc(2026, 6, 15, 11),
+                label="Write report",
+                task_id="t1",
+            )
+        ],
+    }
+    make_arbitrate_node(council)(state)
+    assert "SCOPED REPAIR" not in council.last_context
+
+
 # ── validate ────────────────────────────────────────────────────────────────
 
 def test_validate_parses_valid_json_into_schedule(base_state, mock_api_key):

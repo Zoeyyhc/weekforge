@@ -232,6 +232,30 @@ def make_arbitrate_node(council: Council):
             if state.get("validation_error")
             else ""
         )
+        frozen = state.get("frozen_blocks") or []
+        scoped = ""
+        if frozen and state.get("validation_error"):
+            tz = ZoneInfo(state["preferences"].timezone) if state["preferences"].timezone else timezone.utc
+            occupied = "\n".join(
+                f"- {b.label}: {b.start.astimezone(tz).strftime('%a %H:%M')}–"
+                f"{b.end.astimezone(tz).strftime('%H:%M')} local"
+                for b in frozen
+            )
+            budget = remaining_focus_budget(frozen, state["preferences"])
+            budget_lines = "\n".join(
+                f"- {day.strftime('%a %d %b')}: {mins}min left"
+                for day, mins in sorted(budget.items())
+            )
+            scoped = (
+                "\n\nSCOPED REPAIR — the previous schedule was mostly valid. "
+                "The blocks below are ALREADY FINAL. Do NOT move, resize, or drop them; "
+                "reproduce them unchanged in your output and place nothing that overlaps them:\n"
+                f"{occupied}\n"
+                "Remaining daily focus budget AFTER these fixed blocks (do not exceed):\n"
+                f"{budget_lines}\n"
+                "Only (re-)schedule the tasks flagged as broken in the validation feedback above; "
+                "leave every fixed block exactly as listed."
+            )
         week_label = state.get("week_start") or "this week"
         context = (
             f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
@@ -246,7 +270,7 @@ def make_arbitrate_node(council: Council):
             f"- When the workday window reaches midnight, end blocks at 23:59 local — never 00:00 of the next day.\n\n"
             f"Proposals:\n{proposals_text}\n\n"
             f"Critiques:\n{critiques_text}"
-            f"{human_note}{prev_error}"
+            f"{human_note}{prev_error}{scoped}"
         )
         text = council.arbitrate(context)
         event = {
