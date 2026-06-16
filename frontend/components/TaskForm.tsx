@@ -102,14 +102,27 @@ function validatePrefs(prefs: PrefsDraft): string | null {
   return null;
 }
 
-function pruneDisabledPreferredDays(task: TaskDraft, disabledDays: Weekday[]): TaskDraft {
-  if (!task.preferredDays.some((day) => disabledDays.includes(day))) {
+function firstEnabledWeekday(disabledDays: Weekday[]): Weekday {
+  return DAYS_ALL.find((day) => !disabledDays.includes(day)) ?? "Mon";
+}
+
+function normalizeTaskDraft(task: TaskDraft, disabledDays: Weekday[]): TaskDraft {
+  const preferredDays = task.preferredDays.filter((day) => !disabledDays.includes(day));
+  const preferredDaysChanged = preferredDays.length !== task.preferredDays.length;
+  const deadlineWeekday =
+    task.hasDeadline && disabledDays.includes(task.deadlineWeekday)
+      ? firstEnabledWeekday(disabledDays)
+      : task.deadlineWeekday;
+  const deadlineWeekdayChanged = deadlineWeekday !== task.deadlineWeekday;
+
+  if (!preferredDaysChanged && !deadlineWeekdayChanged) {
     return task;
   }
 
   return {
     ...task,
-    preferredDays: task.preferredDays.filter((day) => !disabledDays.includes(day)),
+    ...(preferredDaysChanged ? { preferredDays } : {}),
+    ...(deadlineWeekdayChanged ? { deadlineWeekday } : {}),
   };
 }
 
@@ -168,12 +181,16 @@ export function TaskForm({
     }
   }, [onWeekChange, weekStart, weekStartDate, workdayEnd]);
 
-  const prunedTasks = tasks.map((task) => pruneDisabledPreferredDays(task, disabledDays));
-  const tasksChanged = prunedTasks.some((task, index) => task !== tasks[index]);
-  if (tasksChanged) {
-    setTasks(prunedTasks);
-  }
-  const effectiveTasks = tasksChanged ? prunedTasks : tasks;
+  const normalizedTasks = tasks.map((task) => normalizeTaskDraft(task, disabledDays));
+  const tasksChanged = normalizedTasks.some((task, index) => task !== tasks[index]);
+  React.useEffect(() => {
+    if (tasksChanged) {
+      queueMicrotask(() => {
+        setTasks((current) => current.map((task) => normalizeTaskDraft(task, disabledDays)));
+      });
+    }
+  }, [disabledDays, tasksChanged]);
+  const effectiveTasks = tasksChanged ? normalizedTasks : tasks;
 
   function patchTask(i: number, patch: Partial<TaskDraft>) {
     setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, ...patch } : t)));

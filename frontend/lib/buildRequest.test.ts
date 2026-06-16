@@ -145,7 +145,12 @@ describe("buildRequest — deadline", () => {
       { workdayStartHour: "9", workdayEndHour: "18", maxFocusMinutes: "360" },
       "2026-06-22",
     );
-    expect(req.tasks[0].deadline!.startsWith("2026-06-26")).toBe(true);
+    const deadline = new Date(req.tasks[0].deadline!);
+    expect(deadline.getFullYear()).toBe(2026);
+    expect(deadline.getMonth()).toBe(5);
+    expect(deadline.getDate()).toBe(26);
+    expect(deadline.getHours()).toBe(23);
+    expect(deadline.getMinutes()).toBe(59);
   });
 });
 
