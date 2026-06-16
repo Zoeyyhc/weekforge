@@ -9,6 +9,12 @@ from zoneinfo import ZoneInfo
 from anthropic import Anthropic
 
 from weekforge.debate.debaters import Council
+from weekforge.debate.validation import (
+    ValidationReport,
+    classify_blocks,
+    remaining_focus_budget,
+    validate_blocks,
+)
 from weekforge.debate.state import DEBATER_NAMES, DebateEvent, DebateState
 from weekforge.models import Preferences, Schedule, Task, TimeBlock
 
@@ -65,75 +71,6 @@ def _fmt_transcript_tail(state: DebateState, n: int = 12) -> str:
         f"[Round {e['round']} {e['speaker']}] {e['content']}"
         for e in state["transcript"][-n:]
     )
-
-
-def validate_blocks(
-    blocks: list[TimeBlock],
-    tasks: list[Task],
-    busy_blocks: list[TimeBlock],
-    preferences: Preferences,
-) -> list[str]:
-    """Return all semantic error descriptions. Empty list = pass."""
-    errors: list[str] = []
-    known_ids = {t.id for t in tasks}
-    tz = ZoneInfo(preferences.timezone) if preferences.timezone else timezone.utc
-
-    minutes_per_day: dict[date, int] = {}
-
-    for block in blocks:
-        local_start = block.start.astimezone(tz)
-        local_end = block.end.astimezone(tz)
-
-        # Rule 1: task_id must be known or None
-        if block.task_id is not None and block.task_id not in known_ids:
-            errors.append(f"Block '{block.label}': unknown task_id '{block.task_id}'")
-
-        # Rule 2: block must stay within one local day and inside the work window.
-        cross_day = local_start.date() != local_end.date()
-        if cross_day:
-            errors.append(
-                f"Block '{block.label}': spans midnight "
-                f"(starts {local_start.strftime('%a %d %b')}, "
-                f"ends {local_end.strftime('%a %d %b')}); "
-                f"focus blocks must stay within one day"
-            )
-        else:
-            if local_start.hour + local_start.minute / 60 < preferences.workday_start_hour:
-                errors.append(
-                    f"Block '{block.label}': starts {local_start.strftime('%H:%M')} local, "
-                    f"before work window {preferences.workday_start_hour:02d}:00"
-                )
-            # workday_end_hour == 24 means midnight; same-day blocks ending by 23:59 are fine.
-            if preferences.workday_end_hour < 24:
-                if local_end.hour + local_end.minute / 60 > preferences.workday_end_hour:
-                    errors.append(
-                        f"Block '{block.label}': ends {local_end.strftime('%H:%M')} local, "
-                        f"after work window {preferences.workday_end_hour:02d}:00"
-                    )
-
-        # Rule 3: no overlap with busy blocks
-        for busy in busy_blocks:
-            if block.start < busy.end and block.end > busy.start:
-                busy_local = busy.start.astimezone(tz)
-                busy_local_end = busy.end.astimezone(tz)
-                errors.append(
-                    f"Block '{block.label}': overlaps with busy '{busy.label}' "
-                    f"({busy_local.strftime('%H:%M')}–{busy_local_end.strftime('%H:%M')} local)"
-                )
-
-        # Accumulate minutes per local day for Rule 4
-        day = local_start.date()
-        minutes_per_day[day] = minutes_per_day.get(day, 0) + block.duration_minutes
-
-    # Rule 4: daily focus cap
-    for day, total in minutes_per_day.items():
-        if total > preferences.max_focus_minutes_per_day:
-            errors.append(
-                f"{day.strftime('%a %d %b')}: {total}min scheduled, "
-                f"exceeds {preferences.max_focus_minutes_per_day}min/day limit"
-            )
-
-    return errors
 
 
 # ── Node factories ──────────────────────────────────────────────────────────
