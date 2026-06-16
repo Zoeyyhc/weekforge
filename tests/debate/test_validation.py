@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from weekforge.debate.validation import classify_blocks, remaining_focus_budget
+from weekforge.debate.validation import classify_blocks, compute_week_window, remaining_focus_budget
 from weekforge.models import Preferences, Task, TimeBlock
 
 
@@ -59,10 +59,6 @@ def test_remaining_focus_budget_subtracts_frozen_minutes():
     frozen = [_block("A", 9, 11, task_id="t1")]  # 120 min on Jun 15
     budget = remaining_focus_budget(frozen, _prefs(max_focus_minutes_per_day=360))
     assert budget[datetime(2026, 6, 15).date()] == 240
-
-
-from datetime import datetime, timezone
-from weekforge.debate.validation import compute_week_window
 
 
 def _now(y, m, d, h, mn=0, tz="Australia/Sydney"):
