@@ -81,9 +81,10 @@ class Council:
 DEFAULT_MODEL = "anthropic/claude-haiku-4-5-20251001"
 
 
-def build_council(api_key: str, model: str = DEFAULT_MODEL) -> Council:
+def build_council(api_key: str, model: str = DEFAULT_MODEL, arbiter_model: str | None = None) -> Council:
     """Build a Council with four Claude-backed CrewAI agents."""
     llm = LLM(model=model, api_key=api_key)
+    arbiter_llm = LLM(model=arbiter_model, api_key=api_key) if arbiter_model else llm
 
     deadline_hawk = Agent(
         role="Deadline Hawk",
@@ -130,7 +131,7 @@ def build_council(api_key: str, model: str = DEFAULT_MODEL) -> Council:
             "and your job is to find the schedule that honours all three as well as possible. "
             "You always explain the trade-offs you accepted."
         ),
-        llm=llm,
+        llm=arbiter_llm,
         verbose=False,
     )
 

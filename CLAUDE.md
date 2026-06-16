@@ -46,6 +46,7 @@ cd frontend && npm test       # vitest run
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API (debate convergence + validate parsing) |
 | `WEEKFORGE_MODEL` | Council/Arbiter model (defaults to Haiku) |
+| `WEEKFORGE_ARBITER_MODEL` | Arbiter-only model; falls back to `WEEKFORGE_MODEL` when unset (recommend a stronger model, e.g. Sonnet, to reduce validation retries) |
 | `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | Google OAuth web flow |
 | `GOOGLE_TOKEN_PATH` | OAuth token store path (default `weekforge_tokens.json`) |
 | `WEEKFORGE_DB_PATH` | SQLite checkpointer / session DB path |
