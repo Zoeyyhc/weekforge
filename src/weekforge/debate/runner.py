@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Generator, NotRequired, TypedDict
 
 from langgraph.types import Command
@@ -9,6 +10,7 @@ from langgraph.types import Command
 from weekforge.debate.debaters import Council
 from weekforge.debate.graph import build_graph
 from weekforge.debate.state import DebateState
+from weekforge.debate.validation import compute_week_window
 from weekforge.models import Preferences, Schedule, Task, TimeBlock
 
 
@@ -66,6 +68,9 @@ def run_debate(
     if resume_value is not None:
         stream_input: Any = Command(resume=resume_value)
     else:
+        window_start, window_end = compute_week_window(
+            week_start, preferences, now=datetime.now(timezone.utc)
+        )
         stream_input = DebateState(
             tasks=tasks,
             busy_blocks=busy_blocks,
@@ -75,6 +80,8 @@ def run_debate(
             max_validation_attempts=max_validation_attempts,
             best_effort_schedule=None,
             week_start=week_start,
+            window_start=window_start,
+            window_end=window_end,
             round_number=0,
             proposals={},
             critiques={},

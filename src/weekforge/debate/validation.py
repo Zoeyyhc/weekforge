@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from weekforge.models import Preferences, Task, TimeBlock
@@ -150,3 +150,34 @@ def remaining_focus_budget(
         day = b.start.astimezone(tz).date()
         used[day] = used.get(day, 0) + b.duration_minutes
     return {day: preferences.max_focus_minutes_per_day - mins for day, mins in used.items()}
+
+
+def compute_week_window(
+    week_start: str | None,
+    preferences: Preferences,
+    now: datetime,
+) -> tuple[datetime, datetime]:
+    """Return (window_start, window_end) tz-aware datetimes for the schedulable window.
+
+    The picked week is [Monday, Sunday]; the lower bound is clamped so we never
+    schedule in the past. `now` is injected for testability.
+    """
+    tz = _tz(preferences)
+    now_local = now.astimezone(tz)
+    today = now_local.date()
+    today_usable = now_local.hour + now_local.minute / 60 < preferences.workday_end_hour
+    earliest_day = today if today_usable else today + timedelta(days=1)
+
+    if week_start:
+        picked_monday = date.fromisoformat(week_start)
+    else:
+        picked_monday = today - timedelta(days=today.weekday())  # Monday of current week
+    picked_sunday = picked_monday + timedelta(days=6)
+
+    window_start_day = max(picked_monday, earliest_day)
+    start_t = time(hour=preferences.workday_start_hour)
+    end_t = time(hour=23, minute=59) if preferences.workday_end_hour >= 24 else time(hour=preferences.workday_end_hour)
+
+    window_start = datetime.combine(window_start_day, start_t, tzinfo=tz)
+    window_end = datetime.combine(picked_sunday, end_t, tzinfo=tz)
+    return window_start, window_end

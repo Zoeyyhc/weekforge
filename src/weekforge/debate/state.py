@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import operator
+from datetime import datetime
 from typing import Annotated, NotRequired, TypedDict
 
 from weekforge.models import Preferences, Schedule, Task, TimeBlock
@@ -28,6 +29,8 @@ class DebateState(TypedDict):
     preferences: Preferences
     max_rounds: int
     week_start: NotRequired[str | None]  # ISO date of the Monday being scheduled
+    window_start: NotRequired[datetime]   # tz-aware lower bound of the schedulable window
+    window_end: NotRequired[datetime]     # tz-aware upper bound (Sunday workday end)
 
     # ── Round tracking ─────────────────────────────────────────────────────
     round_number: int           # incremented by gather_proposals_node
