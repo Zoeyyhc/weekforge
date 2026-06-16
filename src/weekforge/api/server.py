@@ -47,7 +47,8 @@ def build_app() -> FastAPI:
     db_path = os.environ.get("WEEKFORGE_DB_PATH", "weekforge_api.db")
     from weekforge.debate.debaters import DEFAULT_MODEL
     model = os.environ.get("WEEKFORGE_MODEL", DEFAULT_MODEL)
-    council = build_council(api_key, model=model)
+    arbiter_model = os.environ.get("WEEKFORGE_ARBITER_MODEL")
+    council = build_council(api_key, model=model, arbiter_model=arbiter_model)
     google = _build_google_integration()
     return create_app(council=council, api_key=api_key, db_path=db_path, google=google)
 

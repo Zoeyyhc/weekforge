@@ -3,14 +3,25 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from anthropic import Anthropic
 
 from weekforge.debate.debaters import Council
+from weekforge.debate.validation import (
+    ValidationReport,
+    _localize,
+    classify_blocks,
+    remaining_focus_budget,
+    validate_blocks,
+)
 from weekforge.debate.state import DEBATER_NAMES, DebateEvent, DebateState
 from weekforge.models import Preferences, Schedule, Task, TimeBlock
+
+
+logger = logging.getLogger(__name__)
 
 
 # ── Formatting helpers ──────────────────────────────────────────────────────
@@ -56,7 +67,20 @@ def _fmt_prefs(state: DebateState) -> str:
         f"Work hours {p.workday_start_hour}:00–{p.workday_end_hour}:00 LOCAL TIME{tz_clause}, "
         f"max focus {p.max_focus_minutes_per_day}min/day. "
         f"All scheduled blocks MUST fall within this local time window. "
-        f"Output datetimes in UTC with the appropriate offset for {p.timezone or 'UTC'}."
+        f"Output datetimes as LOCAL wall-clock time in {p.timezone or 'UTC'} "
+        f"(e.g. 2026-06-16T09:00:00) with NO timezone offset and NO trailing 'Z'."
+    )
+
+
+def _fmt_window(state: DebateState) -> str:
+    ws = state.get("window_start")
+    we = state.get("window_end")
+    if not ws or not we:
+        return state.get("week_start") or "this week"
+    tz = ZoneInfo(state["preferences"].timezone) if state["preferences"].timezone else timezone.utc
+    return (
+        f"{ws.astimezone(tz).strftime('%a %d %b %H:%M')} "
+        f"to {we.astimezone(tz).strftime('%a %d %b %H:%M')} local"
     )
 
 
@@ -67,73 +91,35 @@ def _fmt_transcript_tail(state: DebateState, n: int = 12) -> str:
     )
 
 
-def validate_blocks(
-    blocks: list[TimeBlock],
-    tasks: list[Task],
-    busy_blocks: list[TimeBlock],
-    preferences: Preferences,
-) -> list[str]:
-    """Return all semantic error descriptions. Empty list = pass."""
-    errors: list[str] = []
-    known_ids = {t.id for t in tasks}
+def _scoped_repair_feedback(report: ValidationReport, preferences: Preferences) -> str:
+    """Human-readable FROZEN/BROKEN + per-day budget message for a failed validation."""
     tz = ZoneInfo(preferences.timezone) if preferences.timezone else timezone.utc
-
-    minutes_per_day: dict[date, int] = {}
-
-    for block in blocks:
-        local_start = block.start.astimezone(tz)
-        local_end = block.end.astimezone(tz)
-
-        # Rule 1: task_id must be known or None
-        if block.task_id is not None and block.task_id not in known_ids:
-            errors.append(f"Block '{block.label}': unknown task_id '{block.task_id}'")
-
-        # Rule 2: block must stay within one local day and inside the work window.
-        cross_day = local_start.date() != local_end.date()
-        if cross_day:
-            errors.append(
-                f"Block '{block.label}': spans midnight "
-                f"(starts {local_start.strftime('%a %d %b')}, "
-                f"ends {local_end.strftime('%a %d %b')}); "
-                f"focus blocks must stay within one day"
+    lines = [
+        "Schedule failed semantic validation. "
+        "Keep the FROZEN blocks exactly as-is; only re-place the BROKEN ones.",
+        "",
+    ]
+    frozen = report.frozen
+    if frozen:
+        lines.append("FROZEN (do not move, already valid):")
+        for b in frozen:
+            ls = b.start.astimezone(tz)
+            le = b.end.astimezone(tz)
+            lines.append(f"  - {b.label}: {ls.strftime('%a %H:%M')}–{le.strftime('%H:%M')} local")
+    if report.to_fix:
+        lines.append("BROKEN (re-place these only):")
+        for rep in report.to_fix:
+            reasons = rep.errors + rep.day_reasons
+            lines.append(f"  - {rep.block.label}: {'; '.join(reasons)}")
+    budget = remaining_focus_budget(frozen, preferences)
+    if budget:
+        lines.append("Daily focus budget remaining after FROZEN blocks:")
+        for day in sorted(budget):
+            lines.append(
+                f"  - {day.strftime('%a %d %b')}: {budget[day]}min left "
+                f"(cap {preferences.max_focus_minutes_per_day})"
             )
-        else:
-            if local_start.hour + local_start.minute / 60 < preferences.workday_start_hour:
-                errors.append(
-                    f"Block '{block.label}': starts {local_start.strftime('%H:%M')} local, "
-                    f"before work window {preferences.workday_start_hour:02d}:00"
-                )
-            # workday_end_hour == 24 means midnight; same-day blocks ending by 23:59 are fine.
-            if preferences.workday_end_hour < 24:
-                if local_end.hour + local_end.minute / 60 > preferences.workday_end_hour:
-                    errors.append(
-                        f"Block '{block.label}': ends {local_end.strftime('%H:%M')} local, "
-                        f"after work window {preferences.workday_end_hour:02d}:00"
-                    )
-
-        # Rule 3: no overlap with busy blocks
-        for busy in busy_blocks:
-            if block.start < busy.end and block.end > busy.start:
-                busy_local = busy.start.astimezone(tz)
-                busy_local_end = busy.end.astimezone(tz)
-                errors.append(
-                    f"Block '{block.label}': overlaps with busy '{busy.label}' "
-                    f"({busy_local.strftime('%H:%M')}–{busy_local_end.strftime('%H:%M')} local)"
-                )
-
-        # Accumulate minutes per local day for Rule 4
-        day = local_start.date()
-        minutes_per_day[day] = minutes_per_day.get(day, 0) + block.duration_minutes
-
-    # Rule 4: daily focus cap
-    for day, total in minutes_per_day.items():
-        if total > preferences.max_focus_minutes_per_day:
-            errors.append(
-                f"{day.strftime('%a %d %b')}: {total}min scheduled, "
-                f"exceeds {preferences.max_focus_minutes_per_day}min/day limit"
-            )
-
-    return errors
+    return "\n".join(lines)
 
 
 # ── Node factories ──────────────────────────────────────────────────────────
@@ -143,10 +129,12 @@ def make_gather_proposals_node(council: Council):
 
     def gather_proposals(state: DebateState) -> dict:
         new_round = state["round_number"] + 1
-        week_label = state.get("week_start") or "this week"
         context = (
-            f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
-            f"All time block datetimes MUST fall within this week and MUST include a UTC offset (e.g. +00:00).\n\n"
+            f"Schedulable window: {_fmt_window(state)}. "
+            f"Every block MUST start at/after the window start and end at/before the window end. "
+            f"Do NOT schedule anything before the window start (those days/hours are in the past).\n"
+            f"All datetimes MUST be LOCAL wall-clock in {state['preferences'].timezone or 'UTC'} "
+            f"with NO offset and NO 'Z' (e.g. 2026-06-16T09:00:00).\n\n"
             f"Tasks to schedule:\n{_fmt_tasks(state)}\n\n"
             f"Fixed commitments this week:\n{_fmt_busy(state)}\n\n"
             f"User preferences: {_fmt_prefs(state)}\n\n"
@@ -264,10 +252,37 @@ def make_arbitrate_node(council: Council):
             if state.get("validation_error")
             else ""
         )
-        week_label = state.get("week_start") or "this week"
+        frozen = state.get("frozen_blocks") or []
+        scoped = ""
+        if frozen and state.get("validation_error"):
+            tz = ZoneInfo(state["preferences"].timezone) if state["preferences"].timezone else timezone.utc
+            occupied = "\n".join(
+                f"- {b.label}: {b.start.astimezone(tz).strftime('%a %H:%M')}–"
+                f"{b.end.astimezone(tz).strftime('%H:%M')} local"
+                for b in frozen
+            )
+            budget = remaining_focus_budget(frozen, state["preferences"])
+            budget_lines = "\n".join(
+                f"- {day.strftime('%a %d %b')}: {mins}min left"
+                for day, mins in sorted(budget.items())
+            )
+            scoped = (
+                "\n\nSCOPED REPAIR — the previous schedule was mostly valid. "
+                "The blocks below are ALREADY FINAL. Do NOT move, resize, or drop them; "
+                "place nothing that overlaps them:\n"
+                f"{occupied}\n"
+                "Remaining daily focus budget AFTER these fixed blocks (do not exceed):\n"
+                f"{budget_lines}\n"
+                "Output JSON for ONLY the tasks flagged as broken in the validation feedback above. "
+                "Do NOT output the fixed blocks listed here — the system re-attaches them automatically. "
+                "Do not place anything that overlaps them, and stay within the remaining daily budget."
+            )
         context = (
-            f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
-            f"All datetimes in the JSON output MUST fall within this week and MUST include a UTC offset.\n\n"
+            f"Schedulable window: {_fmt_window(state)}. "
+            f"Every block MUST start at/after the window start and end at/before the window end. "
+            f"Do NOT schedule anything before the window start (those days/hours are in the past).\n"
+            f"All datetimes MUST be LOCAL wall-clock in {state['preferences'].timezone or 'UTC'} "
+            f"with NO offset and NO 'Z' (e.g. 2026-06-16T09:00:00).\n\n"
             f"Tasks:\n{_fmt_tasks(state)}\n\n"
             f"Fixed commitments this week:\n{_fmt_busy(state)}\n\n"
             f"User preferences: {_fmt_prefs(state)}\n\n"
@@ -278,7 +293,7 @@ def make_arbitrate_node(council: Council):
             f"- When the workday window reaches midnight, end blocks at 23:59 local — never 00:00 of the next day.\n\n"
             f"Proposals:\n{proposals_text}\n\n"
             f"Critiques:\n{critiques_text}"
-            f"{human_note}{prev_error}"
+            f"{human_note}{prev_error}{scoped}"
         )
         text = council.arbitrate(context)
         event = {
@@ -304,10 +319,11 @@ def make_validate_node(api_key: str):
                 "role": "user",
                 "content": (
                     f"Task IDs available: {[t.id for t in state['tasks']]}\n"
-                    f"Week: {state.get('week_start') or 'not specified'} (all datetimes must be in this week with a UTC offset)\n"
+                    f"Week: {state.get('week_start') or 'not specified'} (all datetimes must be in this week as local wall-clock, no offset)\n"
                     f"Arbiter output:\n{state.get('arbiter_output', '')}\n\n"
                     "Extract a JSON array of time blocks. Each object must have: "
-                    "start (ISO 8601 with timezone), end (ISO 8601 with timezone), "
+                    "start (local wall-clock ISO 8601, e.g. 2026-06-16T09:00:00, NO timezone/offset), "
+                    "end (local wall-clock ISO 8601, NO timezone/offset), "
                     "label (string), task_id (task id string or null). "
                     "Output ONLY the raw JSON array, no markdown."
                 ),
@@ -320,23 +336,31 @@ def make_validate_node(api_key: str):
             blocks_data = json.loads(raw)
             blocks = [
                 TimeBlock(
-                    start=datetime.fromisoformat(b["start"]),
-                    end=datetime.fromisoformat(b["end"]),
+                    start=_localize(b["start"], state["preferences"]),
+                    end=_localize(b["end"], state["preferences"]),
                     label=b["label"],
                     task_id=b.get("task_id"),
                 )
                 for b in blocks_data
             ]
-            errors = validate_blocks(
+            frozen_in = state.get("frozen_blocks") or []
+            if frozen_in:
+                frozen_labels = {b.label for b in frozen_in}
+                # Frozen blocks are authoritative: drop any model re-emission of them.
+                blocks = frozen_in + [b for b in blocks if b.label not in frozen_labels]
+            report = classify_blocks(
                 blocks,
                 state["tasks"],
                 state["busy_blocks"],
                 state["preferences"],
+                window=(
+                    (state["window_start"], state["window_end"])
+                    if state.get("window_start") is not None and state.get("window_end") is not None
+                    else None
+                ),
             )
-            if errors:
-                error_msg = "Schedule failed semantic validation:\n" + "\n".join(
-                    f"  - {e}" for e in errors
-                )
+            if not report.ok:
+                error_msg = _scoped_repair_feedback(report, state["preferences"])
                 event = {
                     "round": state["round_number"],
                     "speaker": "System",
@@ -349,6 +373,7 @@ def make_validate_node(api_key: str):
                     "validation_warnings": error_msg,
                     # Blocks parsed fine — keep them as the best-effort fallback.
                     "best_effort_schedule": Schedule(blocks=blocks),
+                    "frozen_blocks": report.frozen,
                     "validation_attempts": state.get("validation_attempts", 0) + 1,
                     "transcript": [event],
                 }
@@ -358,6 +383,7 @@ def make_validate_node(api_key: str):
                 "degraded": False,
                 "validation_warnings": None,
                 "best_effort_schedule": None,
+                "frozen_blocks": [],
             }
         except Exception as exc:
             error_msg = str(exc)
@@ -384,6 +410,11 @@ def finalize_node(state: DebateState) -> dict:
     a clean schedule but an earlier attempt parsed into blocks, deliver that
     best-effort schedule flagged as degraded so the UI can mark it for review.
     """
+    logger.info(
+        "debate finalize: validation_attempts=%d degraded=%s",
+        state.get("validation_attempts", 0),
+        state.get("schedule") is None and state.get("best_effort_schedule") is not None,
+    )
     schedule = state.get("schedule")
     if schedule is None:
         best = state.get("best_effort_schedule")

@@ -148,7 +148,154 @@ def test_arbitrate_context_injects_prefs_busy_and_hard_constraints(base_state):
     assert "23:59" in ctx
 
 
+class _CaptureCouncil:
+    """Council stub that records the context passed to arbitrate()."""
+
+    def __init__(self):
+        self.last_context = None
+
+    def arbitrate(self, context: str) -> str:
+        self.last_context = context
+        return "[]"
+
+
+class _ScriptedCouncil:
+    """Returns a broken schedule until it sees SCOPED REPAIR, then a fixed one."""
+
+    def __init__(self, broken: str, fixed: str):
+        self.broken = broken
+        self.fixed = fixed
+
+    def arbitrate(self, context: str) -> str:
+        return self.fixed if "SCOPED REPAIR" in context else self.broken
+
+
+def _echo_anthropic():
+    """Patch target that echoes the Arbiter output back out of the validate extraction call."""
+
+    def _create(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        raw = content.split("Arbiter output:\n", 1)[1].split("\n\nExtract", 1)[0].strip()
+        resp = MagicMock()
+        resp.content[0].text = raw
+        return resp
+
+    client = MagicMock()
+    client.messages.create.side_effect = _create
+    return client
+
+
+def test_arbitrate_injects_frozen_blocks_and_budget(base_state):
+    council = _CaptureCouncil()
+    frozen = [
+        TimeBlock(
+            start=_utc(2026, 6, 15, 9),
+            end=_utc(2026, 6, 15, 11),
+            label="Write report",
+            task_id="t1",
+        )
+    ]
+    state = {
+        **base_state,
+        "frozen_blocks": frozen,
+        "validation_error": "BROKEN (re-place these only):\n  - Review PRs: before work window 09:00",
+        "round_number": 1,
+        "preferences": Preferences(
+            workday_start_hour=9,
+            workday_end_hour=18,
+            max_focus_minutes_per_day=360,
+            timezone=None,
+        ),
+    }
+
+    make_arbitrate_node(council)(state)
+    ctx = council.last_context
+
+    assert "SCOPED REPAIR" in ctx
+    assert "Write report" in ctx
+    assert "Do NOT move" in ctx
+    assert "240min left" in ctx
+    assert "broken" in ctx.lower()
+
+
+def test_arbitrate_first_pass_has_no_scoped_section(base_state):
+    council = _CaptureCouncil()
+    state = {**base_state, "round_number": 0}
+    make_arbitrate_node(council)(state)
+    assert "SCOPED REPAIR" not in council.last_context
+
+
+def test_arbitrate_non_retry_with_frozen_blocks_has_no_scoped_section(base_state):
+    council = _CaptureCouncil()
+    state = {
+        **base_state,
+        "round_number": 1,
+        "frozen_blocks": [
+            TimeBlock(
+                start=_utc(2026, 6, 15, 9),
+                end=_utc(2026, 6, 15, 11),
+                label="Write report",
+                task_id="t1",
+            )
+        ],
+    }
+    make_arbitrate_node(council)(state)
+    assert "SCOPED REPAIR" not in council.last_context
+
+
 # ── validate ────────────────────────────────────────────────────────────────
+
+
+def test_scoped_repair_converges_in_one_retry(base_state, mock_api_key):
+    # t1 valid both times (09:00–11:00); t2 broken first (07:00–08:00), fixed on retry (11:00–12:00).
+    broken = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T11:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-15T07:00:00+00:00", "end": "2026-06-15T08:00:00+00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    fixed = (
+        '[{"start": "2026-06-15T11:00:00+00:00", "end": "2026-06-15T12:00:00+00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    council = _ScriptedCouncil(broken, fixed)
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+            Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(
+            workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600, timezone=None
+        ),
+        "round_number": 1,
+        "validation_attempts": 0,
+        "proposals": {},
+        "critiques": {},
+    }
+
+    arbitrate = make_arbitrate_node(council)
+    with patch("weekforge.debate.nodes.Anthropic", return_value=_echo_anthropic()):
+        validate = make_validate_node(mock_api_key)
+
+        # Round 1: broken -> validation fails, t1 frozen, t2 flagged.
+        state = {**state, **arbitrate(state)}
+        r1 = validate(state)
+        assert r1["schedule"] is None
+        assert [b.label for b in r1["frozen_blocks"]] == ["Write report"]
+        state = {**state, **r1}
+
+        # Round 2: arbiter sees SCOPED REPAIR -> fixes only t2 -> validation passes.
+        state = {**state, **arbitrate(state)}
+        r2 = validate(state)
+
+    assert r2["schedule"] is not None
+    labels = {b.label for b in r2["schedule"].blocks}
+    assert labels == {"Write report", "Review PRs"}
+    # t1 was left exactly where it was (no oscillation)
+    t1 = next(b for b in r2["schedule"].blocks if b.label == "Write report")
+    assert t1.start.hour == 9 and t1.end.hour == 11
 
 def test_validate_parses_valid_json_into_schedule(base_state, mock_api_key):
     valid_json_output = (
@@ -290,6 +437,72 @@ def test_validate_semantic_fail_returns_best_effort_and_increments_attempts(base
     assert result["validation_warnings"] == result["validation_error"]
 
 
+def test_validate_freezes_valid_blocks_and_scopes_feedback(base_state, mock_api_key):
+    # t1 valid (09:00–11:00), t2 broken (07:00–08:00 before work window).
+    two_blocks_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T11:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-15T07:00:00+00:00", "end": "2026-06-15T08:00:00+00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+            Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone=None),
+        "arbiter_output": two_blocks_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = two_blocks_json
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is None
+    # the valid block is frozen, the broken one is not
+    assert len(result["frozen_blocks"]) == 1
+    assert result["frozen_blocks"][0].label == "Write report"
+    # feedback names both buckets and the offending rule
+    fb = result["validation_error"]
+    assert "FROZEN" in fb and "BROKEN" in fb
+    assert "Write report" in fb and "Review PRs" in fb
+    assert "before work window" in fb
+    assert "focus budget" in fb.lower()
+    assert result["validation_attempts"] == 1
+
+
+def test_validate_success_clears_frozen_blocks(base_state, mock_api_key):
+    valid_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:00:00+00:00",'
+        ' "label": "Task t1", "task_id": "t1"}]'
+    )
+    state = {**base_state, "arbiter_output": valid_json, "round_number": 1,
+             "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone=None)}
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = valid_json
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is not None
+    assert result["frozen_blocks"] == []
+
+
 def test_validate_parse_fail_increments_attempts_without_best_effort(base_state, mock_api_key):
     state = {**base_state, "arbiter_output": "garbage", "round_number": 1, "validation_attempts": 2}
 
@@ -366,6 +579,15 @@ def test_finalize_delivers_best_effort_when_no_valid_schedule(base_state):
             "event_type": "system",
         }
     ]
+
+
+def test_finalize_logs_validation_attempts(base_state, caplog):
+    import logging
+
+    state = {**base_state, "schedule": Schedule(blocks=[]), "validation_attempts": 2}
+    with caplog.at_level(logging.INFO):
+        finalize_node(state)
+    assert "validation_attempts=2" in caplog.text
 
 
 def test_finalize_uses_semantic_warnings_for_best_effort_after_later_parse_error(base_state):
@@ -495,3 +717,194 @@ def test_fmt_busy_converts_utc_to_local_timezone(base_state):
     # Jun 2026 → AEST (UTC+10), so 12:00 UTC = 22:00 local
     assert "22:00" in result
     assert "local" in result
+
+
+def test_validate_merges_frozen_blocks_from_state(mock_api_key):
+    # State already froze a valid Write-report block. The model (mis)behaves and outputs
+    # ONLY a freshly-placed Review block. validate must re-attach the frozen block by code.
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    frozen = TimeBlock(start=datetime(2026, 6, 16, 9, tzinfo=tz),
+                       end=datetime(2026, 6, 16, 11, tzinfo=tz), label="Write report", task_id="t1")
+    model_only_broken = (
+        '[{"start": "2026-06-16T11:00:00", "end": "2026-06-16T12:00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    state = {
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+            Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "frozen_blocks": [frozen],
+        "arbiter_output": model_only_broken,
+        "round_number": 2,
+        "validation_attempts": 1,
+        "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": "prev", "transcript": [],
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = model_only_broken
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    labels = {b.label for b in result["schedule"].blocks}
+    assert labels == {"Write report", "Review PRs"}   # frozen merged back by code
+
+
+def test_validate_drops_model_reemission_of_frozen(mock_api_key):
+    # Model disobeys and re-emits the frozen task with a CHANGED (bad) time. Code must keep
+    # the frozen version, not the model's.
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    frozen = TimeBlock(start=datetime(2026, 6, 16, 9, tzinfo=tz),
+                       end=datetime(2026, 6, 16, 11, tzinfo=tz), label="Write report", task_id="t1")
+    model = (
+        '[{"start": "2026-06-16T07:00:00", "end": "2026-06-16T09:00:00",'   # moved frozen (bad)
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-16T11:00:00", "end": "2026-06-16T12:00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    state = {
+        "tasks": [Task(id="t1", title="W", estimated_minutes=120),
+                  Task(id="t2", title="R", estimated_minutes=60)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "frozen_blocks": [frozen],
+        "arbiter_output": model, "round_number": 2, "validation_attempts": 1, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": "prev", "transcript": [],
+    }
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = model
+        mock_client.messages.create.return_value = mock_response
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    write = next(b for b in result["schedule"].blocks if b.label == "Write report")
+    assert write.start.astimezone(tz).hour == 9   # frozen version kept, model's 07:00 dropped
+
+
+def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
+    # Model emits 09:00+11:00 (summer offset) for a JUNE Sydney week (real offset +10).
+    # After re-localization it must read as 09:00 local, NOT 08:00 → valid, no false "before work window".
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    wrong_offset_json = (
+        '[{"start": "2026-06-16T09:00:00+11:00", "end": "2026-06-16T11:00:00+11:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    state = {
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "arbiter_output": wrong_offset_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+        "max_rounds": 3,
+        "proposals": {},
+        "critiques": {},
+        "converged": False,
+        "interrupt_reason": None,
+        "human_input": None,
+        "schedule": None,
+        "validation_error": None,
+        "transcript": [],
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = wrong_offset_json
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None        # passes: re-localized to 09:00 local, in window
+    block = result["schedule"].blocks[0]
+    assert block.start.astimezone(tz).hour == 9   # 09:00 local, not 08:00
+
+
+def test_dst_window_scenario_converges(mock_api_key):
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+
+    # Round 1: model emits naive wall-clock times; t2 lands on Monday which is before the window.
+    broken = (
+        '[{"start": "2026-06-16T09:00:00", "end": "2026-06-16T11:00:00",'
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-15T09:00:00", "end": "2026-06-15T10:00:00",'   # Monday = before window
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    # Round 2 (scoped, broken-only): model re-places just t2 inside the window.
+    fixed_broken_only = (
+        '[{"start": "2026-06-16T11:00:00", "end": "2026-06-16T12:00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+
+    class _Council:
+        def arbitrate(self, context):
+            return fixed_broken_only if "SCOPED REPAIR" in context else broken
+
+    state = {
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+                  Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "round_number": 1, "validation_attempts": 0, "max_validation_attempts": 3, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": None, "transcript": [],
+    }
+
+    def _echo(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        raw = content.split("Arbiter output:\n", 1)[1].split("\n\nExtract", 1)[0].strip()
+        resp = MagicMock()
+        resp.content[0].text = raw
+        return resp
+
+    arbitrate = make_arbitrate_node(_Council())
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        client = MagicMock()
+        client.messages.create.side_effect = _echo
+        MockAnthropic.return_value = client
+        validate = make_validate_node(mock_api_key)
+
+        state = {**state, **arbitrate(state)}        # round 1 broken
+        r1 = validate(state)
+        assert r1["schedule"] is None
+        assert [b.label for b in r1["frozen_blocks"]] == ["Write report"]
+        state = {**state, **r1}
+
+        state = {**state, **arbitrate(state)}        # round 2 scoped → fixes t2
+        r2 = validate(state)
+
+    assert r2["schedule"] is not None
+    labels = {b.label for b in r2["schedule"].blocks}
+    assert labels == {"Write report", "Review PRs"}
+    # Write report kept at 09:00 local (ZoneInfo-localized by _localize), nothing on the past Monday.
+    t1 = next(b for b in r2["schedule"].blocks if b.label == "Write report")
+    assert t1.start.astimezone(tz).day == 16 and t1.start.astimezone(tz).hour == 9

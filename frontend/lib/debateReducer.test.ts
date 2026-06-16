@@ -66,4 +66,39 @@ describe("debateReducer", () => {
     expect(s.status).toBe("error");
     expect(s.error).toBe("boom");
   });
+
+  it("done message writes degraded and validationWarnings when present", () => {
+    const msg: DoneMsg = {
+      type: "done",
+      schedule: { week_start: null, blocks: [] },
+      thread_id: "t1",
+      degraded: true,
+      validation_warnings: "Schedule failed semantic validation:\n  - block overlaps busy",
+    };
+    const s = debateReducer(initialDebateState, { kind: "message", message: msg });
+    expect(s.degraded).toBe(true);
+    expect(s.validationWarnings).toBe(
+      "Schedule failed semantic validation:\n  - block overlaps busy",
+    );
+  });
+
+  it("done message falls back to false/null when degraded fields are absent", () => {
+    const msg: DoneMsg = {
+      type: "done",
+      schedule: { week_start: null, blocks: [] },
+      thread_id: "t1",
+    };
+    const s = debateReducer(initialDebateState, { kind: "message", message: msg });
+    expect(s.degraded).toBe(false);
+    expect(s.validationWarnings).toBeNull();
+  });
+
+  it("reset clears degraded state back to initial", () => {
+    const dirty = {
+      ...initialDebateState,
+      degraded: true,
+      validationWarnings: "boom",
+    };
+    expect(debateReducer(dirty, { kind: "reset" })).toEqual(initialDebateState);
+  });
 });

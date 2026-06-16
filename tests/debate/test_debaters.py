@@ -110,3 +110,34 @@ def test_build_council_instantiates_four_agents():
 
         assert MockAgent.call_count == 4
         assert isinstance(council, Council)
+
+
+def test_build_council_default_shares_one_model():
+    with (
+        patch("weekforge.debate.debaters.LLM") as MockLLM,
+        patch("weekforge.debate.debaters.Agent", side_effect=lambda **kw: kw),
+    ):
+        build_council(api_key="k", model="anthropic/claude-haiku-x")
+        assert MockLLM.call_count == 1
+
+
+def test_build_council_separate_arbiter_model():
+    base_llm = MagicMock(name="base")
+    arb_llm = MagicMock(name="arb")
+
+    def _llm(model, api_key):
+        return arb_llm if "sonnet" in model else base_llm
+
+    with (
+        patch("weekforge.debate.debaters.LLM", side_effect=_llm),
+        patch("weekforge.debate.debaters.Agent", side_effect=lambda **kw: kw),
+    ):
+        council = build_council(
+            api_key="k",
+            model="anthropic/claude-haiku-x",
+            arbiter_model="anthropic/claude-sonnet-x",
+        )
+        assert council.arbiter["llm"] is arb_llm
+        assert council.deadline_hawk["llm"] is base_llm
+        assert council.energy_guardian["llm"] is base_llm
+        assert council.focus_batcher["llm"] is base_llm

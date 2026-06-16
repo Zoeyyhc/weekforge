@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Schedule } from "@/lib/types";
 import { ForgeSigil } from "@/components/ForgeLogo";
 
@@ -50,13 +50,18 @@ export function ForgedModal({
   open,
   schedule,
   onClose,
+  degraded = false,
+  validationWarnings = null,
 }: {
   open: boolean;
   schedule: Schedule | null;
   onClose: () => void;
+  degraded?: boolean;
+  validationWarnings?: string | null;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   // Focus management + key handling while open.
   useEffect(() => {
@@ -146,10 +151,51 @@ export function ForgedModal({
             Your week is forged.
           </h2>
           <p className="mx-auto mt-3 max-w-xs text-sm leading-relaxed text-muted">
-            {s.count > 0
-              ? "The verdict is in. Here's what the crucible produced."
-              : "The debate has concluded."}
+            {degraded
+              ? "The crucible couldn't satisfy every constraint — here's the closest week it could forge."
+              : s.count > 0
+                ? "The verdict is in. Here's what the crucible produced."
+                : "The debate has concluded."}
           </p>
+
+          {degraded && (
+            <div className="mx-auto mt-5 max-w-sm rounded-xl border border-amber-500/45 bg-amber-500/10 px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,209,128,0.12)]">
+              <p className="flex items-start gap-2.5 text-[13px] leading-relaxed text-amber-100/95">
+                <span aria-hidden className="mt-px shrink-0 text-base leading-none text-amber-400">
+                  ⚠
+                </span>
+                <span>
+                  Some blocks may break your rules (work hours or overlaps). Review them
+                  before adding to your calendar.
+                </span>
+              </p>
+              {validationWarnings && (
+                <div className="mt-2.5 pl-[26px]">
+                  <button
+                    type="button"
+                    onClick={() => setShowDetails((v) => !v)}
+                    aria-expanded={showDetails}
+                    className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-amber-300/80 transition-colors hover:text-amber-200"
+                  >
+                    {showDetails ? "Hide details" : "Show details"}
+                    <span
+                      aria-hidden
+                      className={`text-[9px] transition-transform duration-200 ${
+                        showDetails ? "rotate-180" : ""
+                      }`}
+                    >
+                      ▾
+                    </span>
+                  </button>
+                  {showDetails && (
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-amber-500/20 bg-black/40 p-3 text-left font-mono text-[11px] leading-relaxed text-amber-100/75">
+                      {validationWarnings}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {s.count > 0 && (
             <div className="mt-6 grid grid-cols-3 gap-2.5">

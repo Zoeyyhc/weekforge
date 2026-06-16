@@ -45,6 +45,8 @@ export interface DoneMsg {
   type: "done";
   schedule: Schedule | null;
   thread_id: string;
+  degraded?: boolean;
+  validation_warnings?: string | null;
 }
 
 export interface ErrorMsg {
