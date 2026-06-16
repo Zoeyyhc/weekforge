@@ -44,8 +44,8 @@ flowchart TD
 | `critique` | Each debater critiques the others' proposals | CrewAI |
 | `check_convergence` | Judges if proposals have converged (yes/no); triggers human interrupt or auto-arbitration on stall | Claude Haiku |
 | `human_interrupt` | Pauses graph execution via `langgraph.interrupt()`, waits for user input over SSE | LangGraph |
-| `arbitrate` | Arbiter synthesises all proposals and critiques into a JSON time-block array | CrewAI |
-| `validate` | Parses Arbiter's output into JSON and semantically validates it (work window, no busy-block overlaps, daily focus cap, no cross-midnight blocks); loops back to `arbitrate` with the error on failure, bounded by `max_validation_attempts` (default 3) | Claude Haiku |
+| `arbitrate` | Arbiter synthesises all proposals and critiques into a JSON time-block array in **local wall-clock time (no UTC offset)**; on a scoped retry it re-places only the blocks flagged broken | CrewAI |
+| `validate` | Parses the Arbiter's output, attaches the correct DST offset to its wall-clock times, then semantically validates (work window, no busy-block overlaps, daily focus cap, no cross-midnight, **within the now-aware schedulable week window**); on failure freezes the valid blocks and loops back to `arbitrate` to re-place only the broken ones, bounded by `max_validation_attempts` (default 3) | Claude Haiku |
 | `finalize` | Writes the Schedule to state. If validation never passed within the retry cap, delivers the last parseable best-effort schedule flagged `degraded` (with `validation_warnings`). SSE pushes the result to the frontend calendar view | LangGraph |
 
 ## Color Key
