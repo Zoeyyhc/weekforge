@@ -50,6 +50,7 @@ class DebateState(TypedDict):
     validation_attempts: int               # incremented on each validate failure
     max_validation_attempts: int           # cap; set by runner (default 3)
     best_effort_schedule: Schedule | None   # last schedule that parsed, even if semantically invalid
+    frozen_blocks: NotRequired[list[TimeBlock]]  # semantically valid blocks retained across retries
     degraded: NotRequired[bool]            # finalize sets True when delivering best-effort
     validation_warnings: NotRequired[str | None]  # the semantic violations carried with a degraded result
 

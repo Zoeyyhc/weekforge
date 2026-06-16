@@ -290,6 +290,72 @@ def test_validate_semantic_fail_returns_best_effort_and_increments_attempts(base
     assert result["validation_warnings"] == result["validation_error"]
 
 
+def test_validate_freezes_valid_blocks_and_scopes_feedback(base_state, mock_api_key):
+    # t1 valid (09:00–11:00), t2 broken (07:00–08:00 before work window).
+    two_blocks_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T11:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-15T07:00:00+00:00", "end": "2026-06-15T08:00:00+00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+            Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone=None),
+        "arbiter_output": two_blocks_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = two_blocks_json
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is None
+    # the valid block is frozen, the broken one is not
+    assert len(result["frozen_blocks"]) == 1
+    assert result["frozen_blocks"][0].label == "Write report"
+    # feedback names both buckets and the offending rule
+    fb = result["validation_error"]
+    assert "FROZEN" in fb and "BROKEN" in fb
+    assert "Write report" in fb and "Review PRs" in fb
+    assert "before work window" in fb
+    assert "focus budget" in fb.lower()
+    assert result["validation_attempts"] == 1
+
+
+def test_validate_success_clears_frozen_blocks(base_state, mock_api_key):
+    valid_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:00:00+00:00",'
+        ' "label": "Task t1", "task_id": "t1"}]'
+    )
+    state = {**base_state, "arbiter_output": valid_json, "round_number": 1,
+             "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone=None)}
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = valid_json
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is not None
+    assert result["frozen_blocks"] == []
+
+
 def test_validate_parse_fail_increments_attempts_without_best_effort(base_state, mock_api_key):
     state = {**base_state, "arbiter_output": "garbage", "round_number": 1, "validation_attempts": 2}
 

@@ -73,6 +73,37 @@ def _fmt_transcript_tail(state: DebateState, n: int = 12) -> str:
     )
 
 
+def _scoped_repair_feedback(report: ValidationReport, preferences: Preferences) -> str:
+    """Human-readable FROZEN/BROKEN + per-day budget message for a failed validation."""
+    tz = ZoneInfo(preferences.timezone) if preferences.timezone else timezone.utc
+    lines = [
+        "Schedule failed semantic validation. "
+        "Keep the FROZEN blocks exactly as-is; only re-place the BROKEN ones.",
+        "",
+    ]
+    frozen = report.frozen
+    if frozen:
+        lines.append("FROZEN (do not move, already valid):")
+        for b in frozen:
+            ls = b.start.astimezone(tz)
+            le = b.end.astimezone(tz)
+            lines.append(f"  - {b.label}: {ls.strftime('%a %H:%M')}–{le.strftime('%H:%M')} local")
+    if report.to_fix:
+        lines.append("BROKEN (re-place these only):")
+        for rep in report.to_fix:
+            reasons = rep.errors + rep.day_reasons
+            lines.append(f"  - {rep.block.label}: {'; '.join(reasons)}")
+    budget = remaining_focus_budget(frozen, preferences)
+    if budget:
+        lines.append("Daily focus budget remaining after FROZEN blocks:")
+        for day in sorted(budget):
+            lines.append(
+                f"  - {day.strftime('%a %d %b')}: {budget[day]}min left "
+                f"(cap {preferences.max_focus_minutes_per_day})"
+            )
+    return "\n".join(lines)
+
+
 # ── Node factories ──────────────────────────────────────────────────────────
 
 def make_gather_proposals_node(council: Council):
@@ -264,16 +295,14 @@ def make_validate_node(api_key: str):
                 )
                 for b in blocks_data
             ]
-            errors = validate_blocks(
+            report = classify_blocks(
                 blocks,
                 state["tasks"],
                 state["busy_blocks"],
                 state["preferences"],
             )
-            if errors:
-                error_msg = "Schedule failed semantic validation:\n" + "\n".join(
-                    f"  - {e}" for e in errors
-                )
+            if not report.ok:
+                error_msg = _scoped_repair_feedback(report, state["preferences"])
                 event = {
                     "round": state["round_number"],
                     "speaker": "System",
@@ -286,6 +315,7 @@ def make_validate_node(api_key: str):
                     "validation_warnings": error_msg,
                     # Blocks parsed fine — keep them as the best-effort fallback.
                     "best_effort_schedule": Schedule(blocks=blocks),
+                    "frozen_blocks": report.frozen,
                     "validation_attempts": state.get("validation_attempts", 0) + 1,
                     "transcript": [event],
                 }
@@ -295,6 +325,7 @@ def make_validate_node(api_key: str):
                 "degraded": False,
                 "validation_warnings": None,
                 "best_effort_schedule": None,
+                "frozen_blocks": [],
             }
         except Exception as exc:
             error_msg = str(exc)
