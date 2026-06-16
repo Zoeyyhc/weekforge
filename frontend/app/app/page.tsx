@@ -98,7 +98,7 @@ export default function Home() {
 
   useEffect(() => {
     if (state.status === "done" && state.schedule) {
-      setEditedBlocks(state.schedule.blocks);
+      setEditedBlocks(state.schedule.blocks.filter((b) => b.task_id !== null));
     } else if (state.status === "idle") {
       setEditedBlocks([]);
     }

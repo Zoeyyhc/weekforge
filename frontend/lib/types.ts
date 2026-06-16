@@ -77,6 +77,7 @@ export interface PreferencesInput {
   workday_start_hour?: number;
   workday_end_hour?: number;
   max_focus_minutes_per_day?: number;
+  timezone?: string;
 }
 
 export interface StartDebateRequest {

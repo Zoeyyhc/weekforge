@@ -107,7 +107,7 @@ export function WeekCalendar({
                           type="button"
                           onClick={() => onDelete!(e.blockIndex)}
                           aria-label={`Delete block ${e.title}`}
-                          className="ml-1 text-[#3a3530] transition-colors hover:text-rose-400"
+                          className="ml-1 text-rose-400/40 transition-colors hover:text-rose-400"
                         >
                           ✕
                         </button>

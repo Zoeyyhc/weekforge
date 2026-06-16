@@ -47,6 +47,7 @@ class Preferences(BaseModel):
     workday_start_hour: int = Field(default=9, ge=0, le=23)
     workday_end_hour: int = Field(default=18, ge=1, le=24)
     max_focus_minutes_per_day: int = Field(default=360, gt=0)
+    timezone: str | None = None
 
     @model_validator(mode="after")
     def _end_after_start(self) -> Preferences:
