@@ -843,3 +843,68 @@ def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
     assert result["schedule"] is not None        # passes: re-localized to 09:00 local, in window
     block = result["schedule"].blocks[0]
     assert block.start.astimezone(tz).hour == 9   # 09:00 local, not 08:00
+
+
+def test_dst_window_scenario_converges(mock_api_key):
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+
+    # Round 1: model emits everything with the WRONG +11 offset (its natural mistake) and t2 too early.
+    broken = (
+        '[{"start": "2026-06-16T09:00:00", "end": "2026-06-16T11:00:00",'
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-15T09:00:00", "end": "2026-06-15T10:00:00",'   # Monday = before window
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    # Round 2 (scoped, broken-only): model re-places just t2 inside the window.
+    fixed_broken_only = (
+        '[{"start": "2026-06-16T11:00:00", "end": "2026-06-16T12:00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+
+    class _Council:
+        def arbitrate(self, context):
+            return fixed_broken_only if "SCOPED REPAIR" in context else broken
+
+    state = {
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+                  Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "round_number": 1, "validation_attempts": 0, "max_validation_attempts": 3, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": None, "transcript": [],
+    }
+
+    def _echo(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        raw = content.split("Arbiter output:\n", 1)[1].split("\n\nExtract", 1)[0].strip()
+        resp = MagicMock()
+        resp.content[0].text = raw
+        return resp
+
+    arbitrate = make_arbitrate_node(_Council())
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        client = MagicMock()
+        client.messages.create.side_effect = _echo
+        MockAnthropic.return_value = client
+        validate = make_validate_node(mock_api_key)
+
+        state = {**state, **arbitrate(state)}        # round 1 broken
+        r1 = validate(state)
+        assert r1["schedule"] is None
+        assert [b.label for b in r1["frozen_blocks"]] == ["Write report"]
+        state = {**state, **r1}
+
+        state = {**state, **arbitrate(state)}        # round 2 scoped → fixes t2
+        r2 = validate(state)
+
+    assert r2["schedule"] is not None
+    labels = {b.label for b in r2["schedule"].blocks}
+    assert labels == {"Write report", "Review PRs"}
+    # Write report kept at correct 09:00 LOCAL (DST handled), nothing on the past Monday.
+    t1 = next(b for b in r2["schedule"].blocks if b.label == "Write report")
+    assert t1.start.astimezone(tz).day == 16 and t1.start.astimezone(tz).hour == 9

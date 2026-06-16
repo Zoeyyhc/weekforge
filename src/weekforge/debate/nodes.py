@@ -72,6 +72,18 @@ def _fmt_prefs(state: DebateState) -> str:
     )
 
 
+def _fmt_window(state: DebateState) -> str:
+    ws = state.get("window_start")
+    we = state.get("window_end")
+    if not ws or not we:
+        return state.get("week_start") or "this week"
+    tz = ZoneInfo(state["preferences"].timezone) if state["preferences"].timezone else timezone.utc
+    return (
+        f"{ws.astimezone(tz).strftime('%a %d %b %H:%M')} "
+        f"to {we.astimezone(tz).strftime('%a %d %b %H:%M')} local"
+    )
+
+
 def _fmt_transcript_tail(state: DebateState, n: int = 12) -> str:
     return "\n".join(
         f"[Round {e['round']} {e['speaker']}] {e['content']}"
@@ -117,9 +129,10 @@ def make_gather_proposals_node(council: Council):
 
     def gather_proposals(state: DebateState) -> dict:
         new_round = state["round_number"] + 1
-        week_label = state.get("week_start") or "this week"
         context = (
-            f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
+            f"Schedulable window: {_fmt_window(state)}. "
+            f"Every block MUST start at/after the window start and end at/before the window end. "
+            f"Do NOT schedule anything before the window start (those days/hours are in the past).\n"
             f"All datetimes MUST be LOCAL wall-clock in {state['preferences'].timezone or 'UTC'} "
             f"with NO offset and NO 'Z' (e.g. 2026-06-16T09:00:00).\n\n"
             f"Tasks to schedule:\n{_fmt_tasks(state)}\n\n"
@@ -264,9 +277,10 @@ def make_arbitrate_node(council: Council):
                 "Do NOT output the fixed blocks listed here — the system re-attaches them automatically. "
                 "Do not place anything that overlaps them, and stay within the remaining daily budget."
             )
-        week_label = state.get("week_start") or "this week"
         context = (
-            f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
+            f"Schedulable window: {_fmt_window(state)}. "
+            f"Every block MUST start at/after the window start and end at/before the window end. "
+            f"Do NOT schedule anything before the window start (those days/hours are in the past).\n"
             f"All datetimes MUST be LOCAL wall-clock in {state['preferences'].timezone or 'UTC'} "
             f"with NO offset and NO 'Z' (e.g. 2026-06-16T09:00:00).\n\n"
             f"Tasks:\n{_fmt_tasks(state)}\n\n"
