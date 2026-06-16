@@ -3,6 +3,7 @@
 import { useState } from "react";
 import React from "react";
 import { StartDebateRequest } from "@/lib/types";
+import { WeekPicker } from "@/components/WeekPicker";
 import {
   buildRequest,
   TaskDraft,
@@ -13,6 +14,7 @@ import {
 import { TaskRow } from "@/components/TaskRow";
 import { BusyBlockRow } from "@/components/BusyBlockRow";
 import { IntakePanel, INTAKE_STEPS } from "@/components/IntakePanel";
+import { fromISODate, isPastDay } from "@/lib/weekWindow";
 
 let _draftIdCounter = 0;
 function nextDraftId(): string {
@@ -70,6 +72,8 @@ const SEED_PREFS: PrefsDraft = {
   maxFocusMinutes: "360",
 };
 
+const DAYS_ALL: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 // ── Per-step validation. Each returns an error string, or null when the step
 //    is sound enough to advance. The full check runs again at Convene. ──
 function validateTasks(tasks: TaskDraft[]): string | null {
@@ -119,16 +123,35 @@ export function TaskForm({
   onStart,
   disabled,
   googleSlot,
+  weekStart,
+  onWeekChange,
 }: {
   onStart: (req: StartDebateRequest) => void;
   disabled?: boolean;
   googleSlot?: React.ReactNode;
+  weekStart: string;
+  onWeekChange: (mondayISO: string) => void;
 }) {
   const [tasks, setTasks] = useState<TaskDraft[]>(SEED_TASKS);
   const [blocks, setBlocks] = useState<BusyBlockDraft[]>(SEED_BLOCKS);
   const [prefs, setPrefs] = useState<PrefsDraft>(SEED_PREFS);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
+  const workdayEnd = Number(prefs.workdayEndHour) || 18;
+  const disabledDays: Weekday[] = DAYS_ALL.filter((d) =>
+    isPastDay(d, fromISODate(weekStart), new Date(), workdayEnd),
+  );
+
+  React.useEffect(() => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.preferredDays.some((d) => disabledDays.includes(d))
+          ? { ...t, preferredDays: t.preferredDays.filter((d) => !disabledDays.includes(d)) }
+          : t,
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart, prefs.workdayEndHour]);
 
   function patchTask(i: number, patch: Partial<TaskDraft>) {
     setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, ...patch } : t)));
@@ -234,6 +257,11 @@ export function TaskForm({
                 title="Summon your work."
                 subtitle="Hand the council every task — set the weight, the priority, and a word on why it matters."
               />
+              <WeekPicker
+                value={weekStart}
+                onChange={onWeekChange}
+                workdayEndHour={workdayEnd}
+              />
               <div className="flex flex-col gap-3">
                 {tasks.map((t, i) => (
                   <TaskRow
@@ -241,6 +269,10 @@ export function TaskForm({
                     draft={t}
                     onChange={(patch) => patchTask(i, patch)}
                     onRemove={() => setTasks((prev) => prev.filter((_, j) => j !== i))}
+                    {...({
+                      disabledDays,
+                      weekStart,
+                    } as Record<string, unknown>)}
                   />
                 ))}
                 <button

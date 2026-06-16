@@ -7,14 +7,29 @@ import type { UserEvent } from "@testing-library/user-event";
 // The intake is a stepped wizard (Tasks → Busy Blocks → Preferences); "Convene"
 // only appears on the final step. Walk forward via the "Next" button.
 async function advance(user: UserEvent) {
-  await user.click(screen.getByRole("button", { name: /next/i }));
+  await user.click(screen.getByRole("button", { name: /^next ·/i }));
+}
+
+function renderTaskForm(
+  props: Partial<React.ComponentProps<typeof TaskForm>> = {},
+) {
+  const onWeekChange = vi.fn();
+  const utils = render(
+    <TaskForm
+      onStart={vi.fn()}
+      weekStart="2026-06-15"
+      onWeekChange={onWeekChange}
+      {...props}
+    />,
+  );
+  return { ...utils, onWeekChange };
 }
 
 describe("TaskForm", () => {
   it("submits the seeded sample week as a StartDebateRequest", async () => {
     const onStart = vi.fn();
     const user = userEvent.setup();
-    render(<TaskForm onStart={onStart} />);
+    renderTaskForm({ onStart });
 
     await advance(user); // Tasks → Busy Blocks
     await advance(user); // Busy Blocks → Preferences
@@ -30,7 +45,7 @@ describe("TaskForm", () => {
 
   it("adds a task row when Add task is clicked", async () => {
     const user = userEvent.setup();
-    render(<TaskForm onStart={vi.fn()} />);
+    renderTaskForm();
 
     const before = screen.getAllByTestId("task-row").length;
     await user.click(screen.getByTestId("add-task-btn"));
@@ -39,7 +54,7 @@ describe("TaskForm", () => {
 
   it("removes a task row when its remove button is clicked", async () => {
     const user = userEvent.setup();
-    render(<TaskForm onStart={vi.fn()} />);
+    renderTaskForm();
 
     const before = screen.getAllByTestId("task-row").length;
     await user.click(screen.getAllByTestId("task-remove")[0]);
@@ -49,7 +64,7 @@ describe("TaskForm", () => {
   it("blocks advancing and shows an error when no task has a title", async () => {
     const onStart = vi.fn();
     const user = userEvent.setup();
-    render(<TaskForm onStart={onStart} />);
+    renderTaskForm({ onStart });
 
     // Clear every task title, then try to leave the Tasks step.
     for (const input of screen.getAllByTestId("task-title-input")) {
@@ -64,7 +79,7 @@ describe("TaskForm", () => {
   it("blocks advancing when a busy block ends before it starts", async () => {
     const onStart = vi.fn();
     const user = userEvent.setup();
-    render(<TaskForm onStart={onStart} />);
+    renderTaskForm({ onStart });
 
     await advance(user); // Tasks → Busy Blocks
     const end = screen.getAllByTestId("busy-end-input")[0];
@@ -79,7 +94,7 @@ describe("TaskForm", () => {
   it("submits successfully when an empty busy block row exists (no crash)", async () => {
     const onStart = vi.fn();
     const user = userEvent.setup();
-    render(<TaskForm onStart={onStart} />);
+    renderTaskForm({ onStart });
 
     await advance(user); // Tasks → Busy Blocks
     // Add a block row but leave it empty (no start/end).
@@ -96,7 +111,7 @@ describe("TaskForm", () => {
   it("removing a middle task row does not corrupt the remaining rows", async () => {
     const onStart = vi.fn();
     const user = userEvent.setup();
-    render(<TaskForm onStart={onStart} />);
+    renderTaskForm({ onStart });
 
     // Add a third task row.
     await user.click(screen.getByTestId("add-task-btn"));
@@ -116,12 +131,51 @@ describe("TaskForm", () => {
 
   it("opens a remark plate and captures a note (UI-only)", async () => {
     const user = userEvent.setup();
-    render(<TaskForm onStart={vi.fn()} />);
+    renderTaskForm();
 
     const toggle = screen.getAllByTestId("task-remark-toggle")[0];
     await user.click(toggle);
     const remark = screen.getAllByTestId("task-remark-input")[0];
     await user.type(remark, "Needs the morning");
     expect(remark).toHaveValue("Needs the morning");
+  });
+
+  it("calls onWeekChange when a different week is picked", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T12:00:00"));
+    const { onWeekChange } = renderTaskForm();
+
+    fireEvent.click(screen.getByTestId("week-row-2026-06-22"));
+
+    expect(onWeekChange).toHaveBeenCalledWith("2026-06-22");
+    vi.useRealTimers();
+  });
+
+  it("prunes preferred days that become past days when the selected week changes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T12:00:00"));
+    const onStart = vi.fn();
+    const { rerender } = renderTaskForm({
+      onStart,
+      weekStart: "2026-06-22",
+    });
+
+    fireEvent.click(screen.getAllByTestId("day-pill-Mon")[0]);
+
+    rerender(
+      <TaskForm
+        onStart={onStart}
+        weekStart="2026-06-15"
+        onWeekChange={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
+    fireEvent.click(screen.getByRole("button", { name: /convene the council/i }));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onStart.mock.calls[0][0].tasks[0].preferred_days).toBeUndefined();
+    vi.useRealTimers();
   });
 });

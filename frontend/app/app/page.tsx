@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { defaultWeekMonday, toISODate, toLocalMidnightISO } from "@/lib/weekWindow";
 import { useDebateStream } from "@/lib/useDebateStream";
 import { useGoogleCalendar } from "@/lib/useGoogleCalendar";
 import { useFreshActivity } from "@/lib/useFreshActivity";
@@ -30,41 +31,6 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
   error: "Error",
 };
 
-// Monday of the current week, as YYYY-MM-DD, in local time.
-function currentWeekStart(): string {
-  const d = mondayLocal();
-  return [
-    d.getFullYear(),
-    String(d.getMonth() + 1).padStart(2, "0"),
-    String(d.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-// Monday of the current week at local midnight, as a full ISO 8601 string with
-// the browser's UTC offset (e.g. "2026-06-15T00:00:00+10:00").
-// Used for Google Calendar API calls so the query window is anchored to local
-// midnight, not UTC midnight — otherwise in UTC+10 the window starts at 10 AM
-// Monday and misses early-morning events.
-function currentWeekStartLocal(): string {
-  const d = mondayLocal();
-  const off = -d.getTimezoneOffset(); // minutes ahead of UTC
-  const sign = off >= 0 ? "+" : "-";
-  const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const m = String(Math.abs(off) % 60).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` +
-    `T00:00:00${sign}${h}:${m}`
-  );
-}
-
-function mondayLocal(): Date {
-  const d = new Date();
-  const day = (d.getDay() + 6) % 7; // 0 = Monday, local time
-  d.setDate(d.getDate() - day);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 export default function Home() {
   const { state, maxRounds, start, intervene, reset } = useDebateStream();
   const google = useGoogleCalendar();
@@ -72,7 +38,9 @@ export default function Home() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importDone, setImportDone] = useState(false);
-  const weekStart = currentWeekStart();
+  const [weekStart, setWeekStart] = useState(() =>
+    toISODate(defaultWeekMonday(new Date(), 18)),
+  );
   const showForm = state.status === "idle";
 
   // Celebrate the verdict exactly once per debate. Fires when the stream lands
@@ -129,7 +97,7 @@ export default function Home() {
     setImportDone(false);
     try {
       if (google.calendars.length === 0) await google.loadCalendars();
-      const blocks = await google.importWeek(currentWeekStartLocal());
+      const blocks = await google.importWeek(toLocalMidnightISO(weekStart));
       setImported(blocks);
       setImportDone(true);
     } catch (err) {
@@ -238,7 +206,14 @@ export default function Home() {
         </span>
       </header>
 
-      {showForm && <TaskForm onStart={handleStart} googleSlot={googleSlot} />}
+      {showForm && (
+        <TaskForm
+          onStart={handleStart}
+          googleSlot={googleSlot}
+          weekStart={weekStart}
+          onWeekChange={setWeekStart}
+        />
+      )}
 
       {!showForm && (
         <div className="flex flex-col gap-6 md:flex-row md:items-start">
@@ -262,7 +237,7 @@ export default function Home() {
                 />
                 {google.connected && (
                   <ExportButton
-                    onExport={() => exportSchedule(currentWeekStartLocal(), editedBlocks)}
+                    onExport={() => exportSchedule(toLocalMidnightISO(weekStart), editedBlocks)}
                   />
                 )}
               </div>
