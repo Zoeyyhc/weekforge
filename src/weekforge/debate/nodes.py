@@ -330,7 +330,7 @@ def make_validate_node(api_key: str):
                 state["preferences"],
                 window=(
                     (state["window_start"], state["window_end"])
-                    if state.get("window_start") and state.get("window_end")
+                    if state.get("window_start") is not None and state.get("window_end") is not None
                     else None
                 ),
             )
