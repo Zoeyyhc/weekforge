@@ -503,6 +503,15 @@ def test_finalize_delivers_best_effort_when_no_valid_schedule(base_state):
     ]
 
 
+def test_finalize_logs_validation_attempts(base_state, caplog):
+    import logging
+
+    state = {**base_state, "schedule": Schedule(blocks=[]), "validation_attempts": 2}
+    with caplog.at_level(logging.INFO):
+        finalize_node(state)
+    assert "validation_attempts=2" in caplog.text
+
+
 def test_finalize_uses_semantic_warnings_for_best_effort_after_later_parse_error(base_state):
     best = Schedule(blocks=[TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10), label="x")])
     semantic_warning = "Schedule failed semantic validation:\n  - Block 'x': outside work window"

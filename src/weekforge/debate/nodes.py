@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,9 @@ from weekforge.debate.validation import (
 )
 from weekforge.debate.state import DEBATER_NAMES, DebateEvent, DebateState
 from weekforge.models import Preferences, Schedule, Task, TimeBlock
+
+
+logger = logging.getLogger(__name__)
 
 
 # ── Formatting helpers ──────────────────────────────────────────────────────
@@ -376,6 +380,11 @@ def finalize_node(state: DebateState) -> dict:
     a clean schedule but an earlier attempt parsed into blocks, deliver that
     best-effort schedule flagged as degraded so the UI can mark it for review.
     """
+    logger.info(
+        "debate finalize: validation_attempts=%d degraded=%s",
+        state.get("validation_attempts", 0),
+        state.get("schedule") is None and state.get("best_effort_schedule") is not None,
+    )
     schedule = state.get("schedule")
     if schedule is None:
         best = state.get("best_effort_schedule")
