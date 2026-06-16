@@ -328,6 +328,11 @@ def make_validate_node(api_key: str):
                 state["tasks"],
                 state["busy_blocks"],
                 state["preferences"],
+                window=(
+                    (state["window_start"], state["window_end"])
+                    if state.get("window_start") and state.get("window_end")
+                    else None
+                ),
             )
             if not report.ok:
                 error_msg = _scoped_repair_feedback(report, state["preferences"])

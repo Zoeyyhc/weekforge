@@ -50,6 +50,7 @@ def classify_blocks(
     tasks: list[Task],
     busy_blocks: list[TimeBlock],
     preferences: Preferences,
+    window: tuple[datetime, datetime] | None = None,
 ) -> ValidationReport:
     """Classify each block as valid (freezable) or broken, with reasons."""
     tz = _tz(preferences)
@@ -97,6 +98,17 @@ def classify_blocks(
                 rep.errors.append(
                     f"Block '{block.label}': overlaps with busy '{busy.label}' "
                     f"({busy_local.strftime('%H:%M')}–{busy_local_end.strftime('%H:%M')} local)"
+                )
+
+        # Rule 5: block must fall inside the schedulable week window
+        if window is not None:
+            window_start, window_end = window
+            if block.start < window_start or block.end > window_end:
+                ws = window_start.astimezone(tz)
+                we = window_end.astimezone(tz)
+                rep.errors.append(
+                    f"Block '{block.label}': outside the schedulable week "
+                    f"({ws.strftime('%a %d %b %H:%M')}–{we.strftime('%a %d %b %H:%M')} local)"
                 )
 
         day = local_start.date()

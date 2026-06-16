@@ -94,3 +94,30 @@ def test_window_end_24_uses_2359():
     prefs = Preferences(workday_start_hour=8, workday_end_hour=24, timezone="Australia/Sydney")
     ws, we = compute_week_window("2026-06-22", prefs, now=_now(2026, 6, 17, 10))
     assert (we.hour, we.minute) == (23, 59)
+
+
+def test_block_before_window_start_is_broken():
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
+    window = (
+        datetime(2026, 6, 16, 9, tzinfo=tz),   # Tue 09:00
+        datetime(2026, 6, 21, 18, tzinfo=tz),  # Sun 18:00
+    )
+    # Block on Monday 2026-06-15 (before window) → must be flagged.
+    block = TimeBlock(start=datetime(2026, 6, 15, 9, tzinfo=tz),
+                      end=datetime(2026, 6, 15, 11, tzinfo=tz), label="Past", task_id="t1")
+    report = classify_blocks([block], [Task(id="t1", title="X", estimated_minutes=120)], [], prefs, window=window)
+    assert report.ok is False
+    assert "outside the schedulable week" in report.to_fix[0].errors[0]
+
+
+def test_block_inside_window_is_ok():
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
+    window = (datetime(2026, 6, 16, 9, tzinfo=tz), datetime(2026, 6, 21, 18, tzinfo=tz))
+    block = TimeBlock(start=datetime(2026, 6, 16, 9, tzinfo=tz),
+                      end=datetime(2026, 6, 16, 11, tzinfo=tz), label="OK", task_id="t1")
+    report = classify_blocks([block], [Task(id="t1", title="X", estimated_minutes=120)], [], prefs, window=window)
+    assert report.ok is True
