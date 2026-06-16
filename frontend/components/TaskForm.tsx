@@ -14,7 +14,13 @@ import {
 import { TaskRow } from "@/components/TaskRow";
 import { BusyBlockRow } from "@/components/BusyBlockRow";
 import { IntakePanel, INTAKE_STEPS } from "@/components/IntakePanel";
-import { fromISODate, isPastDay } from "@/lib/weekWindow";
+import {
+  defaultWeekMonday,
+  fromISODate,
+  isPastDay,
+  isWeekSelectable,
+  toISODate,
+} from "@/lib/weekWindow";
 
 let _draftIdCounter = 0;
 function nextDraftId(): string {
@@ -138,9 +144,18 @@ export function TaskForm({
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const workdayEnd = Number(prefs.workdayEndHour) || 18;
+  const weekStartDate = fromISODate(weekStart);
   const disabledDays: Weekday[] = DAYS_ALL.filter((d) =>
-    isPastDay(d, fromISODate(weekStart), new Date(), workdayEnd),
+    isPastDay(d, weekStartDate, new Date(), workdayEnd),
   );
+
+  React.useEffect(() => {
+    if (isWeekSelectable(weekStartDate, new Date(), workdayEnd)) return;
+    const nextSelectableWeek = toISODate(defaultWeekMonday(new Date(), workdayEnd));
+    if (nextSelectableWeek !== weekStart) {
+      onWeekChange(nextSelectableWeek);
+    }
+  }, [onWeekChange, weekStart, weekStartDate, workdayEnd]);
 
   React.useEffect(() => {
     setTasks((prev) =>

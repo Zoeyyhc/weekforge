@@ -41,6 +41,8 @@ export default function Home() {
   const [weekStart, setWeekStart] = useState(() =>
     toISODate(defaultWeekMonday(new Date(), 18)),
   );
+  const latestWeekStartRef = useRef(weekStart);
+  const importRequestIdRef = useRef(0);
   const showForm = state.status === "idle";
 
   // Celebrate the verdict exactly once per debate. Fires when the stream lands
@@ -72,6 +74,15 @@ export default function Home() {
     }
   }, [state.status, state.schedule]);
 
+  useEffect(() => {
+    latestWeekStartRef.current = weekStart;
+    importRequestIdRef.current += 1;
+    setImported([]);
+    setImportDone(false);
+    setImportError(null);
+    setImporting(false);
+  }, [weekStart]);
+
   function handleEditTime(blockIndex: number, field: "start" | "end", timeStr: string) {
     setEditedBlocks((prev) =>
       prev.map((b, i) => {
@@ -92,20 +103,35 @@ export default function Home() {
   }
 
   async function handleImport() {
+    const requestWeekStart = weekStart;
+    const requestId = importRequestIdRef.current + 1;
+    importRequestIdRef.current = requestId;
     setImporting(true);
     setImportError(null);
     setImportDone(false);
     try {
       if (google.calendars.length === 0) await google.loadCalendars();
-      const blocks = await google.importWeek(toLocalMidnightISO(weekStart));
-      setImported(blocks);
-      setImportDone(true);
+      const blocks = await google.importWeek(toLocalMidnightISO(requestWeekStart));
+      if (
+        importRequestIdRef.current === requestId &&
+        latestWeekStartRef.current === requestWeekStart
+      ) {
+        setImported(blocks);
+        setImportDone(true);
+      }
     } catch (err) {
-      setImportError(
-        err instanceof Error ? err.message : "Could not import from Google Calendar.",
-      );
+      if (
+        importRequestIdRef.current === requestId &&
+        latestWeekStartRef.current === requestWeekStart
+      ) {
+        setImportError(
+          err instanceof Error ? err.message : "Could not import from Google Calendar.",
+        );
+      }
     } finally {
-      setImporting(false);
+      if (importRequestIdRef.current === requestId) {
+        setImporting(false);
+      }
     }
   }
 

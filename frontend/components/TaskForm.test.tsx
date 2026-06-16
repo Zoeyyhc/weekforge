@@ -178,4 +178,29 @@ describe("TaskForm", () => {
     expect(onStart.mock.calls[0][0].tasks[0].preferred_days).toBeUndefined();
     vi.useRealTimers();
   });
+
+  it("advances weekStart when workday end makes the selected week non-selectable", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-21T19:00:00"));
+    const { rerender, onWeekChange } = renderTaskForm({
+      weekStart: "2026-06-22",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
+    fireEvent.change(screen.getByTestId("pref-end"), { target: { value: "20" } });
+
+    rerender(
+      <TaskForm
+        onStart={vi.fn()}
+        weekStart="2026-06-15"
+        onWeekChange={onWeekChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("pref-end"), { target: { value: "18" } });
+
+    expect(onWeekChange).toHaveBeenCalledWith("2026-06-22");
+    vi.useRealTimers();
+  });
 });
