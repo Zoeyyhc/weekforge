@@ -27,11 +27,9 @@ class GoogleIntegration:
     def __init__(
         self,
         token_store: OAuthTokenStore,
-        calendar_name: str = "WeekForge",
         frontend_url: str = "http://localhost:3000",
     ) -> None:
         self._store = token_store
-        self._calendar_name = calendar_name
         self._frontend_url = frontend_url
         self._pending_code_verifier: str | None = None
 
@@ -70,20 +68,19 @@ class GoogleIntegration:
     def list_calendars(self) -> list[dict]:
         """Return the user's calendars for the import picker.
 
-        Excludes WeekForge's own output calendar (importing it would be
-        circular). Marks the primary calendar as selected-by-default.
+        All calendars are listed and selected by default so import captures the
+        full picture. WeekForge's own blocks live on the primary calendar tagged
+        with a private marker and are skipped at read time, so there is no
+        self-output calendar to special-case here.
         """
         result: list[dict] = []
         for c in self._client().list_calendars():
-            if c.get("summary") == self._calendar_name:
-                continue
-            is_primary = bool(c.get("primary", False))
             result.append(
                 {
                     "id": c["id"],
                     "summary": c.get("summary"),
-                    "primary": is_primary,
-                    "selected_by_default": is_primary,
+                    "primary": bool(c.get("primary", False)),
+                    "selected_by_default": True,
                 }
             )
         return result
@@ -98,9 +95,9 @@ class GoogleIntegration:
     def export_schedule(
         self, blocks: list[TimeBlock], week_start: datetime, time_zone: str | None = None
     ) -> tuple[int, str]:
-        """Write blocks to the WeekForge calendar. Returns (written_count, calendar_url)."""
+        """Write blocks to the user's primary calendar. Returns (written_count, calendar_url)."""
         week_end = week_start + timedelta(days=7)
-        writer = GoogleCalendarWriter(self._client(), calendar_name=self._calendar_name)
+        writer = GoogleCalendarWriter(self._client())
         count = writer.write_blocks(blocks, week_start, week_end, time_zone=time_zone)
         calendar_url = "https://calendar.google.com/calendar/r/week"
         return count, calendar_url

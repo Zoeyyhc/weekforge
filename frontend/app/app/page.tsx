@@ -19,7 +19,7 @@ import { GoogleConnect } from "@/components/GoogleConnect";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import { ImportPreview } from "@/components/ImportPreview";
 import { DebateStatus } from "@/lib/debateReducer";
-import { googleLoginUrl, googleDisconnectUrl, exportSchedule } from "@/lib/api";
+import { googleLoginUrl, exportSchedule } from "@/lib/api";
 import { BusyBlockInput, TimeBlock, StartDebateRequest } from "@/lib/types";
 
 const STATUS_LABEL: Record<DebateStatus, string> = {
@@ -93,6 +93,36 @@ export default function Home() {
   const speakingActive = useFreshActivity(state.events.length, 3500);
   const progress = debateProgress(state.events, maxRounds, state.status, speakingActive);
 
+  // ── Editable copy of the forged schedule ──────────────────────────────────
+  const [editedBlocks, setEditedBlocks] = useState<TimeBlock[]>([]);
+
+  useEffect(() => {
+    if (state.status === "done" && state.schedule) {
+      setEditedBlocks(state.schedule.blocks.filter((b) => b.task_id !== null));
+    } else if (state.status === "idle") {
+      setEditedBlocks([]);
+    }
+  }, [state.status, state.schedule]);
+
+  function handleEditTime(blockIndex: number, field: "start" | "end", timeStr: string) {
+    setEditedBlocks((prev) =>
+      prev.map((b, i) => {
+        if (i !== blockIndex) return b;
+        const base = new Date(b[field]);
+        const [h, m] = timeStr.split(":").map(Number);
+        base.setHours(h, m, 0, 0);
+        const updated = base.toISOString();
+        const newBlock = { ...b, [field]: updated };
+        if (new Date(newBlock.end).getTime() <= new Date(newBlock.start).getTime()) return b;
+        return newBlock;
+      }),
+    );
+  }
+
+  function handleDeleteBlock(blockIndex: number) {
+    setEditedBlocks((prev) => prev.filter((_, i) => i !== blockIndex));
+  }
+
   async function handleImport() {
     setImporting(true);
     setImportError(null);
@@ -117,7 +147,7 @@ export default function Home() {
         <GoogleConnect
           connected={google.connected}
           loginUrl={googleLoginUrl()}
-          disconnectUrl={googleDisconnectUrl()}
+          onDisconnect={google.disconnect}
         />
         {google.connected && (
           <button
@@ -163,6 +193,34 @@ export default function Home() {
     start({ ...req, week_start: weekStart, busy_blocks: [...(req.busy_blocks ?? []), ...importedInputs] });
   }
 
+  // ── Login gate ─────────────────────────────────────────────────────────────
+  if (!google.statusKnown) return null;
+
+  if (!google.connected) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center px-4">
+        <AppAtmosphere />
+        <div className="flex flex-col items-center gap-8 text-center">
+          <ForgeLogo size="lg" href="/" />
+          <div>
+            <h2 className="font-display text-3xl font-light tracking-tight">
+              The council awaits your calendar.
+            </h2>
+            <p className="mt-3 text-sm text-muted">
+              Connect Google Calendar to convene the council and forge your week.
+            </p>
+          </div>
+          <a
+            href={googleLoginUrl()}
+            className="inline-flex items-center gap-2 rounded-xl bg-ember px-7 py-3.5 text-sm font-semibold text-background shadow-[0_0_0_0_rgba(255,107,53,0.5)] transition-all duration-300 hover:shadow-[0_0_36px_4px_rgba(255,107,53,0.45)]"
+          >
+            Sign in with Google →
+          </a>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
       <AppAtmosphere />
@@ -197,10 +255,14 @@ export default function Home() {
                 <h2 className="font-mono text-[10px] uppercase tracking-[0.32em] text-amber/80">
                   ⚒ The forged week
                 </h2>
-                <WeekCalendar schedule={state.schedule} />
+                <WeekCalendar
+                  schedule={{ ...state.schedule, blocks: editedBlocks }}
+                  onEditTime={handleEditTime}
+                  onDelete={handleDeleteBlock}
+                />
                 {google.connected && (
                   <ExportButton
-                    onExport={() => exportSchedule(currentWeekStartLocal(), state.schedule!.blocks)}
+                    onExport={() => exportSchedule(currentWeekStartLocal(), editedBlocks)}
                   />
                 )}
               </div>

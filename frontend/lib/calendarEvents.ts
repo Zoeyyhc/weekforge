@@ -7,6 +7,7 @@ export interface CalendarEvent {
   start: Date;
   end: Date;
   color: string;
+  blockIndex: number;
 }
 
 export function toCalendarEvents(blocks: TimeBlock[]): CalendarEvent[] {
@@ -15,6 +16,7 @@ export function toCalendarEvents(blocks: TimeBlock[]): CalendarEvent[] {
     start: new Date(b.start),
     end: new Date(b.end),
     color: PALETTE[i % PALETTE.length],
+    blockIndex: i,
   }));
 }
 

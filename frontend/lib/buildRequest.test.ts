@@ -129,3 +129,24 @@ describe("buildRequest — preferredDays", () => {
     expect(req.tasks[0].preferred_days).toBeUndefined();
   });
 });
+
+describe("buildRequest — remark", () => {
+  it("includes remark on the task when non-empty", () => {
+    const req = buildRequest(
+      [makeDraft({ remark: "Do this early in the morning" })],
+      noBlocks,
+      prefs,
+    );
+    expect(req.tasks[0].remark).toBe("Do this early in the morning");
+  });
+
+  it("omits remark when blank", () => {
+    const req = buildRequest([makeDraft({ remark: "" })], noBlocks, prefs);
+    expect(req.tasks[0].remark).toBeUndefined();
+  });
+
+  it("omits remark when whitespace only", () => {
+    const req = buildRequest([makeDraft({ remark: "   " })], noBlocks, prefs);
+    expect(req.tasks[0].remark).toBeUndefined();
+  });
+});

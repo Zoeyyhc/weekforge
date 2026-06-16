@@ -66,3 +66,13 @@ def test_task_preferred_days_accepts_ordered_list():
 def test_task_preferred_days_accepts_empty_list():
     task = Task(id="t1", title="Write report", estimated_minutes=60, preferred_days=[])
     assert task.preferred_days == []
+
+
+def test_task_remark_defaults_to_none():
+    task = Task(id="t1", title="Write report", estimated_minutes=90)
+    assert task.remark is None
+
+
+def test_task_remark_accepts_string():
+    task = Task(id="t1", title="Write report", estimated_minutes=90, remark="Do this in the morning")
+    assert task.remark == "Do this in the morning"

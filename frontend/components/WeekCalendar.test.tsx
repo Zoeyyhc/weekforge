@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, within, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { WeekCalendar } from "@/components/WeekCalendar";
 import { Schedule } from "@/lib/types";
 
@@ -39,5 +40,46 @@ describe("WeekCalendar", () => {
     render(<WeekCalendar schedule={{ week_start: null, blocks: [] }} />);
     expect(screen.getByTestId("schedule-empty")).toBeInTheDocument();
     expect(screen.queryByTestId("week-calendar")).not.toBeInTheDocument();
+  });
+});
+
+describe("WeekCalendar — editable mode", () => {
+  it("renders time inputs when onEditTime is provided", () => {
+    render(
+      <WeekCalendar
+        schedule={SCHEDULE}
+        onEditTime={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    // Each block row should have two <input type="time"> elements
+    const inputs = document.querySelectorAll('input[type="time"]');
+    expect(inputs.length).toBe(SCHEDULE.blocks.length * 2); // start + end per block
+  });
+
+  it("calls onDelete with the correct block index when delete is clicked", async () => {
+    const onDelete = vi.fn();
+    render(
+      <WeekCalendar schedule={SCHEDULE} onEditTime={vi.fn()} onDelete={onDelete} />,
+    );
+    const deleteButtons = screen.getAllByRole("button", { name: /delete block/i });
+    await userEvent.click(deleteButtons[0]);
+    expect(onDelete).toHaveBeenCalledWith(0);
+  });
+
+  it("calls onEditTime with block index, field, and new value", () => {
+    const onEditTime = vi.fn();
+    render(
+      <WeekCalendar schedule={SCHEDULE} onEditTime={onEditTime} onDelete={vi.fn()} />,
+    );
+    const startInputs = document.querySelectorAll<HTMLInputElement>('input[type="time"]');
+    fireEvent.change(startInputs[0], { target: { value: "10:30" } });
+    expect(onEditTime).toHaveBeenCalledWith(0, "start", "10:30");
+  });
+
+  it("does not render delete buttons or time inputs in read-only mode", () => {
+    render(<WeekCalendar schedule={SCHEDULE} />);
+    expect(screen.queryByRole("button", { name: /delete block/i })).not.toBeInTheDocument();
+    expect(document.querySelectorAll('input[type="time"]').length).toBe(0);
   });
 });

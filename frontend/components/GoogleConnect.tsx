@@ -1,11 +1,11 @@
 export function GoogleConnect({
   connected,
   loginUrl,
-  disconnectUrl,
+  onDisconnect,
 }: {
   connected: boolean;
   loginUrl: string;
-  disconnectUrl: string;
+  onDisconnect: () => void;
 }) {
   if (!connected) {
     return (
@@ -39,12 +39,13 @@ export function GoogleConnect({
         </span>
       </span>
       <span aria-hidden className="mx-0.5 h-6 w-px bg-guardian/20" />
-      <a
-        href={disconnectUrl}
+      <button
+        type="button"
+        onClick={onDisconnect}
         className="font-mono text-[11px] tracking-wide text-muted underline-offset-2 transition-colors hover:text-foreground hover:underline"
       >
         unbind
-      </a>
+      </button>
     </div>
   );
 }

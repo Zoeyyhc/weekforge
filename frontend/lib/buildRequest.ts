@@ -10,7 +10,7 @@ export interface TaskDraft {
   hasDeadline: boolean;
   deadlineWeekday: Weekday;
   preferredDays: Weekday[]; // ordered, max 2: [firstChoice, secondChoice]
-  remark: string; // planner's note to themselves; UI-only, not sent to the council
+  remark: string; // planner's note to the council; included in the request when non-empty
 }
 
 export interface BusyBlockDraft {
@@ -59,6 +59,7 @@ export function buildRequest(
       priority: t.priority,
       deadline: t.hasDeadline ? deadlineToISO(t.deadlineWeekday) : null,
       ...(t.preferredDays.length > 0 && { preferred_days: t.preferredDays }),
+      ...(t.remark.trim() !== "" && { remark: t.remark.trim() }),
     })),
     busy_blocks: busyBlocks.length
       ? busyBlocks.map((b) => ({
@@ -71,6 +72,7 @@ export function buildRequest(
       workday_start_hour: Number(prefs.workdayStartHour),
       workday_end_hour: Number(prefs.workdayEndHour),
       max_focus_minutes_per_day: Number(prefs.maxFocusMinutes),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     max_rounds: 3,
     require_human_on_stall: true,

@@ -49,5 +49,6 @@ def test_debate_state_shape():
         "round_number", "proposals", "critiques", "converged",
         "interrupt_reason", "human_input", "arbiter_output",
         "validation_error", "schedule", "transcript",
+        "validation_attempts", "max_validation_attempts", "best_effort_schedule",
     }
     assert required_keys.issubset(hints.keys()), f"Missing keys: {required_keys - hints.keys()}"

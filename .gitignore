@@ -17,3 +17,6 @@ node_modules/
 *.db-shm
 *.db-wal
 weekforge_tokens.json
+
+# Git worktrees for isolated task execution
+.worktrees/

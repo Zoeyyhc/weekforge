@@ -46,5 +46,12 @@ class DebateState(TypedDict):
     validation_error: str | None   # non-None if schedule parsing failed
     schedule: Schedule | None      # structured output; set by validate_node
 
+    # ── Retry bound + best-effort fallback ─────────────────────────────────
+    validation_attempts: int               # incremented on each validate failure
+    max_validation_attempts: int           # cap; set by runner (default 3)
+    best_effort_schedule: Schedule | None   # last schedule that parsed, even if semantically invalid
+    degraded: NotRequired[bool]            # finalize sets True when delivering best-effort
+    validation_warnings: NotRequired[str | None]  # the semantic violations carried with a degraded result
+
     # ── Append-only transcript (operator.add merges by concatenation) ──────
     transcript: Annotated[list[DebateEvent], operator.add]

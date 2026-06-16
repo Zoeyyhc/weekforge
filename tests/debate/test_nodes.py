@@ -112,6 +112,42 @@ def test_arbitrate_includes_human_input_when_present(mock_council, base_state):
     assert result["arbiter_output"] is not None
 
 
+def test_arbitrate_context_injects_prefs_busy_and_hard_constraints(base_state):
+    captured = {}
+
+    class RecordingCouncil:
+        def arbitrate(self, context: str) -> str:
+            captured["context"] = context
+            return "[]"
+
+    state = {
+        **base_state,
+        "proposals": {n: "p" for n in DEBATER_NAMES},
+        "critiques": {n: "c" for n in DEBATER_NAMES},
+        "round_number": 1,
+        "preferences": Preferences(
+            workday_start_hour=9, workday_end_hour=17, timezone="Australia/Sydney"
+        ),
+        "busy_blocks": [
+            TimeBlock(start=_utc(2026, 6, 15, 10), end=_utc(2026, 6, 15, 11), label="Standup")
+        ],
+    }
+
+    node = make_arbitrate_node(RecordingCouncil())
+    node(state)
+    ctx = captured["context"]
+
+    # Real preference values injected (from _fmt_prefs)
+    assert "Work hours 9:00–17:00" in ctx
+    assert "max focus" in ctx
+    # Fixed commitments injected (from _fmt_busy)
+    assert "Standup" in ctx
+    # Hard constraints present
+    assert "HARD SCHEDULING CONSTRAINTS" in ctx
+    assert "same local date" in ctx
+    assert "23:59" in ctx
+
+
 # ── validate ────────────────────────────────────────────────────────────────
 
 def test_validate_parses_valid_json_into_schedule(base_state, mock_api_key):
@@ -138,6 +174,73 @@ def test_validate_parses_valid_json_into_schedule(base_state, mock_api_key):
     assert result["validation_error"] is None
 
 
+def test_validate_success_clears_stale_best_effort_metadata(base_state, mock_api_key):
+    valid_json_output = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    stale_best_effort = Schedule(
+        blocks=[TimeBlock(start=_utc(2026, 6, 15, 11), end=_utc(2026, 6, 15, 12), label="stale")]
+    )
+    state = {
+        **base_state,
+        "arbiter_output": valid_json_output,
+        "round_number": 2,
+        "best_effort_schedule": stale_best_effort,
+        "validation_warnings": "Schedule failed semantic validation:\n  - stale warning",
+        "degraded": True,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = valid_json_output
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert isinstance(result["schedule"], Schedule)
+    assert result["validation_error"] is None
+    assert result["degraded"] is False
+    assert result["validation_warnings"] is None
+    assert result["best_effort_schedule"] is None
+
+
+def test_validate_sets_error_on_semantic_violation(base_state, mock_api_key):
+    # Block at 02:00 UTC with timezone=None (UTC fallback), workday_start=9 → violation
+    out_of_hours_json = (
+        '[{"start": "2026-06-15T02:00:00+00:00", "end": "2026-06-15T03:00:00+00:00",'
+        ' "label": "Night work", "task_id": "t1"}]'
+    )
+    state = {
+        **base_state,
+        "arbiter_output": out_of_hours_json,
+        "round_number": 1,
+        "preferences": Preferences(workday_start_hour=9, timezone=None),
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = out_of_hours_json
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is None
+    assert result["validation_error"] is not None
+    assert "semantic validation" in result["validation_error"]
+    assert len(result["transcript"]) == 1
+    assert result["transcript"][0]["event_type"] == "validation_fail"
+    # The visible transcript must surface WHICH rule failed, not just a generic line.
+    assert "before work window" in result["transcript"][0]["content"]
+    assert "Night work" in result["transcript"][0]["content"]
+
+
 def test_validate_sets_error_on_invalid_json(base_state, mock_api_key):
     state = {**base_state, "arbiter_output": "not json at all", "round_number": 1}
 
@@ -157,6 +260,55 @@ def test_validate_sets_error_on_invalid_json(base_state, mock_api_key):
     assert result["transcript"][0]["event_type"] == "validation_fail"
 
 
+def test_validate_semantic_fail_returns_best_effort_and_increments_attempts(base_state, mock_api_key):
+    out_of_hours_json = (
+        '[{"start": "2026-06-15T02:00:00+00:00", "end": "2026-06-15T03:00:00+00:00",'
+        ' "label": "Night work", "task_id": "t1"}]'
+    )
+    state = {
+        **base_state,
+        "arbiter_output": out_of_hours_json,
+        "round_number": 1,
+        "preferences": Preferences(workday_start_hour=9, timezone=None),
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = out_of_hours_json
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is None
+    assert isinstance(result["best_effort_schedule"], Schedule)
+    assert len(result["best_effort_schedule"].blocks) == 1
+    assert result["validation_attempts"] == 1
+    assert result["validation_warnings"] == result["validation_error"]
+
+
+def test_validate_parse_fail_increments_attempts_without_best_effort(base_state, mock_api_key):
+    state = {**base_state, "arbiter_output": "garbage", "round_number": 1, "validation_attempts": 2}
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = "this is not valid json {"
+        mock_client.messages.create.return_value = mock_response
+
+        node = make_validate_node(mock_api_key)
+        result = node(state)
+
+    assert result["schedule"] is None
+    assert result["validation_attempts"] == 3
+    # Parse failure must NOT overwrite a previously-captured best-effort schedule.
+    assert "best_effort_schedule" not in result
+
+
 # ── finalize ────────────────────────────────────────────────────────────────
 
 def test_finalize_returns_schedule_unchanged(base_state):
@@ -165,6 +317,84 @@ def test_finalize_returns_schedule_unchanged(base_state):
     state = {**base_state, "schedule": schedule}
     result = finalize_node(state)
     assert result["schedule"] is schedule
+
+
+def test_finalize_clean_schedule_clears_stale_best_effort_metadata(base_state):
+    block = TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10), label="Work")
+    schedule = Schedule(blocks=[block])
+    stale_best_effort = Schedule(
+        blocks=[TimeBlock(start=_utc(2026, 6, 15, 11), end=_utc(2026, 6, 15, 12), label="stale")]
+    )
+    state = {
+        **base_state,
+        "schedule": schedule,
+        "degraded": True,
+        "validation_warnings": "Schedule failed semantic validation:\n  - stale warning",
+        "best_effort_schedule": stale_best_effort,
+    }
+
+    result = finalize_node(state)
+
+    assert result["schedule"] is schedule
+    assert result["degraded"] is False
+    assert result["validation_warnings"] is None
+    assert result["best_effort_schedule"] is None
+
+
+def test_finalize_delivers_best_effort_when_no_valid_schedule(base_state):
+    best = Schedule(blocks=[TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10), label="x")])
+    state = {
+        **base_state,
+        "schedule": None,
+        "best_effort_schedule": best,
+        "validation_error": "Schedule failed semantic validation:\n  - Block 'x': ...",
+        "max_validation_attempts": 3,
+        "round_number": 2,
+    }
+    result = finalize_node(state)
+    assert result["schedule"] is best
+    assert result["degraded"] is True
+    assert result["validation_warnings"]  # non-empty string
+    assert result["transcript"] == [
+        {
+            "round": 2,
+            "speaker": "System",
+            "content": (
+                "Exceeded 3 validation retries; returning best-effort schedule "
+                "(may contain semantic issues)."
+            ),
+            "event_type": "system",
+        }
+    ]
+
+
+def test_finalize_uses_semantic_warnings_for_best_effort_after_later_parse_error(base_state):
+    best = Schedule(blocks=[TimeBlock(start=_utc(2026, 6, 15, 9), end=_utc(2026, 6, 15, 10), label="x")])
+    semantic_warning = "Schedule failed semantic validation:\n  - Block 'x': outside work window"
+    parse_error = "Expecting value: line 1 column 1 (char 0)"
+    state = {
+        **base_state,
+        "schedule": None,
+        "best_effort_schedule": best,
+        "validation_warnings": semantic_warning,
+        "validation_error": parse_error,
+        "max_validation_attempts": 3,
+        "round_number": 3,
+    }
+    result = finalize_node(state)
+    assert result["schedule"] is best
+    assert result["validation_warnings"] == semantic_warning
+    assert result["validation_warnings"] != parse_error
+    assert result["transcript"][0]["round"] == 3
+    assert result["transcript"][0]["speaker"] == "System"
+    assert result["transcript"][0]["event_type"] == "system"
+
+
+def test_finalize_returns_none_when_no_schedule_and_no_best_effort(base_state):
+    state = {**base_state, "schedule": None, "best_effort_schedule": None}
+    result = finalize_node(state)
+    assert result["schedule"] is None
+    assert result.get("degraded") in (None, False)
 
 
 def test_fmt_tasks_includes_preferred_days_and_deadline(base_state):
@@ -189,3 +419,79 @@ def test_fmt_tasks_includes_preferred_days_and_deadline(base_state):
     assert "prefer" in result
     assert "Wed" in result
     assert "Fri" in result
+
+
+def test_fmt_tasks_includes_remark_when_present(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {
+        **base_state,
+        "tasks": [
+            Task(
+                id="t1",
+                title="Write report",
+                estimated_minutes=120,
+                priority=1,
+                remark="Do this first thing in the morning, before emails",
+            )
+        ],
+    }
+    result = _fmt_tasks(state)
+    assert "Do this first thing in the morning" in result
+    assert "note:" in result
+
+
+def test_fmt_tasks_omits_note_segment_when_remark_is_none(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {**base_state, "tasks": [Task(id="t1", title="Write report", estimated_minutes=60, priority=2)]}
+    result = _fmt_tasks(state)
+    assert "note:" not in result
+
+
+def test_fmt_tasks_escapes_quotes_in_remark(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=60, priority=1,
+                 remark='Do "urgent" work first')
+        ],
+    }
+    result = _fmt_tasks(state)
+    assert 'note: "Do \\"urgent\\" work first"' in result
+
+
+def test_fmt_tasks_escapes_backslashes_in_remark(base_state):
+    from weekforge.debate.nodes import _fmt_tasks
+
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=60, priority=1,
+                 remark=r"path\to\file")
+        ],
+    }
+    result = _fmt_tasks(state)
+    assert r'note: "path\\to\\file"' in result
+
+
+def test_fmt_busy_converts_utc_to_local_timezone(base_state):
+    from weekforge.debate.nodes import _fmt_busy
+
+    state = {
+        **base_state,
+        "preferences": Preferences(timezone="Australia/Sydney"),
+        "busy_blocks": [
+            TimeBlock(
+                start=datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc),
+                end=datetime(2026, 6, 15, 13, 0, tzinfo=timezone.utc),
+                label="Meeting",
+            )
+        ],
+    }
+    result = _fmt_busy(state)
+    # Jun 2026 → AEST (UTC+10), so 12:00 UTC = 22:00 local
+    assert "22:00" in result
+    assert "local" in result

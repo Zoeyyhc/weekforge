@@ -11,6 +11,24 @@ from typing import Protocol, runtime_checkable
 
 from weekforge.models import TimeBlock
 
+# ---------------------------------------------------------------------------
+# WeekForge marker — private extended property tagging our own events
+# ---------------------------------------------------------------------------
+
+WEEKFORGE_MARKER_KEY = "weekforge"
+WEEKFORGE_MARKER_VALUE = "1"
+WEEKFORGE_MARKER_QUERY = f"{WEEKFORGE_MARKER_KEY}={WEEKFORGE_MARKER_VALUE}"
+
+
+def _is_weekforge_event(event: dict) -> bool:
+    """True only if the event carries WeekForge's private marker.
+
+    Foreign events (the user's real meetings) can never be tagged through the
+    Google Calendar UI, so a True here uniquely identifies our own output.
+    """
+    private = (event.get("extendedProperties") or {}).get("private") or {}
+    return private.get(WEEKFORGE_MARKER_KEY) == WEEKFORGE_MARKER_VALUE
+
 
 # ---------------------------------------------------------------------------
 # Thin adapter protocol — the only Google API calls we make
@@ -23,7 +41,10 @@ class GoogleCalendarClient(Protocol):
     def find_calendar(self, name: str) -> str | None: ...
     def create_calendar(self, name: str) -> str: ...
     def insert_event(self, calendar_id: str, event: dict) -> str: ...
-    def delete_events_in_range(self, calendar_id: str, start: datetime, end: datetime) -> None: ...
+    def delete_events_in_range(
+        self, calendar_id: str, start: datetime, end: datetime,
+        private_extended_property: str | None = None,
+    ) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -75,18 +96,24 @@ class RealGoogleCalendarClient:
         result = self._svc.events().insert(calendarId=calendar_id, body=event).execute()
         return result["id"]
 
-    def delete_events_in_range(self, calendar_id: str, start: datetime, end: datetime) -> None:
-        resp = (
-            self._svc.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=start.isoformat(),
-                timeMax=end.isoformat(),
-                singleEvents=True,
-            )
-            .execute()
-        )
+    def delete_events_in_range(
+        self, calendar_id: str, start: datetime, end: datetime,
+        private_extended_property: str | None = None,
+    ) -> None:
+        list_kwargs: dict[str, object] = {
+            "calendarId": calendar_id,
+            "timeMin": start.isoformat(),
+            "timeMax": end.isoformat(),
+            "singleEvents": True,
+        }
+        if private_extended_property is not None:
+            list_kwargs["privateExtendedProperty"] = private_extended_property
+        resp = self._svc.events().list(**list_kwargs).execute()
         for event in resp.get("items", []):
+            # Defense in depth: even if the server-side filter is bypassed,
+            # NEVER delete an event that doesn't carry our marker.
+            if private_extended_property is not None and not _is_weekforge_event(event):
+                continue
             self._svc.events().delete(calendarId=calendar_id, eventId=event["id"]).execute()
 
     @staticmethod
@@ -122,6 +149,10 @@ class GoogleCalendarProvider:
         blocks: list[TimeBlock] = []
         for calendar_id in self._calendar_ids:
             for e in self._client.list_events(calendar_id, start, end):
+                # WeekForge's own blocks are re-planned this week; never treat
+                # them as fixed busy time, or we re-import our own output.
+                if _is_weekforge_event(e):
+                    continue
                 label = e.get("summary") or "Busy"
                 blocks.append(
                     TimeBlock(start=e["start_dt"], end=e["end_dt"], label=label)
@@ -134,16 +165,17 @@ class GoogleCalendarProvider:
 # ---------------------------------------------------------------------------
 
 class GoogleCalendarWriter:
-    """Writes forged schedule blocks into a dedicated WeekForge calendar.
+    """Writes forged schedule blocks into the user's primary calendar.
 
-    Re-export for the same week first clears the calendar range, then writes
-    fresh events — idempotent by design. Only the WeekForge calendar is ever
-    touched; the user's primary calendar is never modified.
+    Each event carries a private WeekForge marker so re-exports delete ONLY our
+    own blocks. Foreign events (the user's real meetings) are never read,
+    modified, or deleted — guaranteed by the marker filter plus the client-side
+    guard in delete_events_in_range.
     """
 
-    def __init__(self, client: GoogleCalendarClient, calendar_name: str = "WeekForge") -> None:
+    def __init__(self, client: GoogleCalendarClient, target_calendar_id: str = "primary") -> None:
         self._client = client
-        self._calendar_name = calendar_name
+        self._target_calendar_id = target_calendar_id
 
     def write_blocks(
         self,
@@ -152,17 +184,23 @@ class GoogleCalendarWriter:
         week_end: datetime,
         time_zone: str | None = None,
     ) -> int:
-        cal_id = self._client.find_calendar(self._calendar_name)
-        if cal_id is None:
-            cal_id = self._client.create_calendar(self._calendar_name)
+        cal_id = self._target_calendar_id
 
-        self._client.delete_events_in_range(cal_id, week_start, week_end)
+        # Clear previous WeekForge blocks only — marker filter + guard ensure
+        # foreign events are never touched.
+        self._client.delete_events_in_range(
+            cal_id, week_start, week_end,
+            private_extended_property=WEEKFORGE_MARKER_QUERY,
+        )
 
         for block in blocks:
             event = {
                 "summary": block.label,
                 "start": self._event_time(block.start, time_zone),
                 "end": self._event_time(block.end, time_zone),
+                "extendedProperties": {
+                    "private": {WEEKFORGE_MARKER_KEY: WEEKFORGE_MARKER_VALUE}
+                },
             }
             self._client.insert_event(cal_id, event)
 

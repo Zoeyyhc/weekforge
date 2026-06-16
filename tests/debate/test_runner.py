@@ -91,6 +91,91 @@ def test_run_debate_yields_done_event_with_schedule(mock_council, mock_api_key, 
     assert done_events[0]["schedule"] is final_schedule
 
 
+def test_run_debate_initialises_retry_fields(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"finalize": {"schedule": Schedule(), "transcript": []}},
+        ])
+
+        list(run_debate(
+            tasks=sample_tasks, busy_blocks=sample_busy, preferences=sample_prefs,
+            thread_id="retry-init", api_key=mock_api_key, council=mock_council,
+        ))
+
+        stream_arg = mock_graph.stream.call_args.args[0]
+        assert stream_arg["validation_attempts"] == 0
+        assert stream_arg["max_validation_attempts"] == 3
+        assert stream_arg["best_effort_schedule"] is None
+
+
+def test_run_debate_forwards_custom_max_validation_attempts(
+    mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs
+):
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"finalize": {"schedule": Schedule(), "transcript": []}},
+        ])
+
+        list(run_debate(
+            tasks=sample_tasks,
+            busy_blocks=sample_busy,
+            preferences=sample_prefs,
+            thread_id="retry-custom",
+            api_key=mock_api_key,
+            council=mock_council,
+            max_validation_attempts=5,
+        ))
+
+        stream_arg = mock_graph.stream.call_args.args[0]
+        assert stream_arg["max_validation_attempts"] == 5
+
+
+def test_run_debate_done_event_carries_degraded_flag(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
+    best = Schedule()
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"finalize": {
+                "schedule": best,
+                "degraded": True,
+                "validation_warnings": "Exceeded 3 validation retries; returning best-effort schedule.",
+                "transcript": [],
+            }},
+        ])
+
+        events = list(run_debate(
+            tasks=sample_tasks, busy_blocks=sample_busy, preferences=sample_prefs,
+            thread_id="degraded-thread", api_key=mock_api_key, council=mock_council,
+        ))
+
+    done = [e for e in events if e["type"] == "done"][0]
+    assert done["degraded"] is True
+    assert "Exceeded" in done["validation_warnings"]
+
+
+def test_run_debate_done_event_defaults_not_degraded(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"finalize": {"schedule": Schedule(), "transcript": []}},
+        ])
+
+        events = list(run_debate(
+            tasks=sample_tasks, busy_blocks=sample_busy, preferences=sample_prefs,
+            thread_id="clean-thread", api_key=mock_api_key, council=mock_council,
+        ))
+
+    done = [e for e in events if e["type"] == "done"][0]
+    assert done["degraded"] is False
+    assert done["validation_warnings"] is None
+
+
 def test_run_debate_yields_interrupt_event_when_graph_pauses(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
     """When the graph hits human_interrupt, run_debate yields an 'interrupt' event."""
     from langgraph.types import Interrupt

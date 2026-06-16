@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from anthropic import Anthropic
 
 from weekforge.debate.debaters import Council
 from weekforge.debate.state import DEBATER_NAMES, DebateEvent, DebateState
-from weekforge.models import Schedule, TimeBlock
+from weekforge.models import Preferences, Schedule, Task, TimeBlock
 
 
 # ── Formatting helpers ──────────────────────────────────────────────────────
@@ -28,14 +29,21 @@ def _fmt_tasks(state: DebateState) -> str:
                 for i, d in enumerate(t.preferred_days[:2])
             )
             line += f", prefer: {pref}"
+        if t.remark:
+            safe = t.remark.replace("\\", "\\\\").replace('"', '\\"')
+            line += f', note: "{safe}"'
         line += ")"
         lines.append(line)
     return "\n".join(lines) if lines else "No tasks."
 
 
 def _fmt_busy(state: DebateState) -> str:
+    tz_name = state["preferences"].timezone
+    tz = ZoneInfo(tz_name) if tz_name else timezone.utc
     lines = [
-        f"- {b.label}: {b.start.strftime('%a %d %b %H:%M')}–{b.end.strftime('%H:%M')}"
+        f"- {b.label}: "
+        f"{b.start.astimezone(tz).strftime('%a %d %b %H:%M')}–"
+        f"{b.end.astimezone(tz).strftime('%H:%M')} local"
         for b in state["busy_blocks"]
     ]
     return "\n".join(lines) if lines else "No fixed commitments."
@@ -43,7 +51,13 @@ def _fmt_busy(state: DebateState) -> str:
 
 def _fmt_prefs(state: DebateState) -> str:
     p = state["preferences"]
-    return f"Work hours {p.workday_start_hour}:00–{p.workday_end_hour}:00, max focus {p.max_focus_minutes_per_day}min/day"
+    tz_clause = f" ({p.timezone})" if p.timezone else " (timezone unknown — assume UTC)"
+    return (
+        f"Work hours {p.workday_start_hour}:00–{p.workday_end_hour}:00 LOCAL TIME{tz_clause}, "
+        f"max focus {p.max_focus_minutes_per_day}min/day. "
+        f"All scheduled blocks MUST fall within this local time window. "
+        f"Output datetimes in UTC with the appropriate offset for {p.timezone or 'UTC'}."
+    )
 
 
 def _fmt_transcript_tail(state: DebateState, n: int = 12) -> str:
@@ -51,6 +65,75 @@ def _fmt_transcript_tail(state: DebateState, n: int = 12) -> str:
         f"[Round {e['round']} {e['speaker']}] {e['content']}"
         for e in state["transcript"][-n:]
     )
+
+
+def validate_blocks(
+    blocks: list[TimeBlock],
+    tasks: list[Task],
+    busy_blocks: list[TimeBlock],
+    preferences: Preferences,
+) -> list[str]:
+    """Return all semantic error descriptions. Empty list = pass."""
+    errors: list[str] = []
+    known_ids = {t.id for t in tasks}
+    tz = ZoneInfo(preferences.timezone) if preferences.timezone else timezone.utc
+
+    minutes_per_day: dict[date, int] = {}
+
+    for block in blocks:
+        local_start = block.start.astimezone(tz)
+        local_end = block.end.astimezone(tz)
+
+        # Rule 1: task_id must be known or None
+        if block.task_id is not None and block.task_id not in known_ids:
+            errors.append(f"Block '{block.label}': unknown task_id '{block.task_id}'")
+
+        # Rule 2: block must stay within one local day and inside the work window.
+        cross_day = local_start.date() != local_end.date()
+        if cross_day:
+            errors.append(
+                f"Block '{block.label}': spans midnight "
+                f"(starts {local_start.strftime('%a %d %b')}, "
+                f"ends {local_end.strftime('%a %d %b')}); "
+                f"focus blocks must stay within one day"
+            )
+        else:
+            if local_start.hour + local_start.minute / 60 < preferences.workday_start_hour:
+                errors.append(
+                    f"Block '{block.label}': starts {local_start.strftime('%H:%M')} local, "
+                    f"before work window {preferences.workday_start_hour:02d}:00"
+                )
+            # workday_end_hour == 24 means midnight; same-day blocks ending by 23:59 are fine.
+            if preferences.workday_end_hour < 24:
+                if local_end.hour + local_end.minute / 60 > preferences.workday_end_hour:
+                    errors.append(
+                        f"Block '{block.label}': ends {local_end.strftime('%H:%M')} local, "
+                        f"after work window {preferences.workday_end_hour:02d}:00"
+                    )
+
+        # Rule 3: no overlap with busy blocks
+        for busy in busy_blocks:
+            if block.start < busy.end and block.end > busy.start:
+                busy_local = busy.start.astimezone(tz)
+                busy_local_end = busy.end.astimezone(tz)
+                errors.append(
+                    f"Block '{block.label}': overlaps with busy '{busy.label}' "
+                    f"({busy_local.strftime('%H:%M')}–{busy_local_end.strftime('%H:%M')} local)"
+                )
+
+        # Accumulate minutes per local day for Rule 4
+        day = local_start.date()
+        minutes_per_day[day] = minutes_per_day.get(day, 0) + block.duration_minutes
+
+    # Rule 4: daily focus cap
+    for day, total in minutes_per_day.items():
+        if total > preferences.max_focus_minutes_per_day:
+            errors.append(
+                f"{day.strftime('%a %d %b')}: {total}min scheduled, "
+                f"exceeds {preferences.max_focus_minutes_per_day}min/day limit"
+            )
+
+    return errors
 
 
 # ── Node factories ──────────────────────────────────────────────────────────
@@ -186,6 +269,13 @@ def make_arbitrate_node(council: Council):
             f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
             f"All datetimes in the JSON output MUST fall within this week and MUST include a UTC offset.\n\n"
             f"Tasks:\n{_fmt_tasks(state)}\n\n"
+            f"Fixed commitments this week:\n{_fmt_busy(state)}\n\n"
+            f"User preferences: {_fmt_prefs(state)}\n\n"
+            f"HARD SCHEDULING CONSTRAINTS (violating any of these forces a retry):\n"
+            f"- Every block's START local hour must be at or after the workday start hour above.\n"
+            f"- Every block's END local hour must be at or before the workday end hour above.\n"
+            f"- No block may cross midnight: a block's start and end MUST fall on the same local date.\n"
+            f"- When the workday window reaches midnight, end blocks at 23:59 local — never 00:00 of the next day.\n\n"
             f"Proposals:\n{proposals_text}\n\n"
             f"Critiques:\n{critiques_text}"
             f"{human_note}{prev_error}"
@@ -237,8 +327,38 @@ def make_validate_node(api_key: str):
                 )
                 for b in blocks_data
             ]
-            schedule = Schedule(blocks=blocks)
-            return {"schedule": schedule, "validation_error": None}
+            errors = validate_blocks(
+                blocks,
+                state["tasks"],
+                state["busy_blocks"],
+                state["preferences"],
+            )
+            if errors:
+                error_msg = "Schedule failed semantic validation:\n" + "\n".join(
+                    f"  - {e}" for e in errors
+                )
+                event = {
+                    "round": state["round_number"],
+                    "speaker": "System",
+                    "content": f"{error_msg}\nRetrying arbitration.",
+                    "event_type": "validation_fail",
+                }
+                return {
+                    "schedule": None,
+                    "validation_error": error_msg,
+                    "validation_warnings": error_msg,
+                    # Blocks parsed fine — keep them as the best-effort fallback.
+                    "best_effort_schedule": Schedule(blocks=blocks),
+                    "validation_attempts": state.get("validation_attempts", 0) + 1,
+                    "transcript": [event],
+                }
+            return {
+                "schedule": Schedule(blocks=blocks),
+                "validation_error": None,
+                "degraded": False,
+                "validation_warnings": None,
+                "best_effort_schedule": None,
+            }
         except Exception as exc:
             error_msg = str(exc)
             event = {
@@ -247,11 +367,48 @@ def make_validate_node(api_key: str):
                 "content": f"Schedule parsing failed: {error_msg}. Retrying arbitration.",
                 "event_type": "validation_fail",
             }
-            return {"schedule": None, "validation_error": error_msg, "transcript": [event]}
+            return {
+                "schedule": None,
+                "validation_error": error_msg,
+                "validation_attempts": state.get("validation_attempts", 0) + 1,
+                "transcript": [event],
+            }
 
     return validate
 
 
 def finalize_node(state: DebateState) -> dict:
-    """Terminal node — passes the validated schedule through unchanged."""
-    return {"schedule": state["schedule"]}
+    """Terminal node.
+
+    Normally passes the validated schedule through. If validation never produced
+    a clean schedule but an earlier attempt parsed into blocks, deliver that
+    best-effort schedule flagged as degraded so the UI can mark it for review.
+    """
+    schedule = state.get("schedule")
+    if schedule is None:
+        best = state.get("best_effort_schedule")
+        if best is not None:
+            warning = (
+                f"Exceeded {state.get('max_validation_attempts', 3)} validation "
+                "retries; returning best-effort schedule (may contain semantic issues)."
+            )
+            event = {
+                "round": state["round_number"],
+                "speaker": "System",
+                "content": warning,
+                "event_type": "system",
+            }
+            return {
+                "schedule": best,
+                "degraded": True,
+                "validation_warnings": (
+                    state.get("validation_warnings") or state.get("validation_error") or warning
+                ),
+                "transcript": [event],
+            }
+    return {
+        "schedule": schedule,
+        "degraded": False,
+        "validation_warnings": None,
+        "best_effort_schedule": None,
+    }

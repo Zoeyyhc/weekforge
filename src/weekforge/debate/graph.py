@@ -36,6 +36,10 @@ def _route_after_convergence_check(state: DebateState) -> str:
 def _route_after_validate(state: DebateState) -> str:
     if state.get("schedule") is not None:
         return "finalize"
+    # Bound the arbitrate↔validate loop: after the cap, hand off the best-effort
+    # schedule to finalize instead of retrying into recursion_limit.
+    if state.get("validation_attempts", 0) >= state.get("max_validation_attempts", 3):
+        return "finalize"
     return "arbitrate"
 
 
