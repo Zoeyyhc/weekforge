@@ -849,7 +849,7 @@ def test_dst_window_scenario_converges(mock_api_key):
     from zoneinfo import ZoneInfo
     tz = ZoneInfo("Australia/Sydney")
 
-    # Round 1: model emits everything with the WRONG +11 offset (its natural mistake) and t2 too early.
+    # Round 1: model emits naive wall-clock times; t2 lands on Monday which is before the window.
     broken = (
         '[{"start": "2026-06-16T09:00:00", "end": "2026-06-16T11:00:00",'
         ' "label": "Write report", "task_id": "t1"},'
@@ -905,6 +905,6 @@ def test_dst_window_scenario_converges(mock_api_key):
     assert r2["schedule"] is not None
     labels = {b.label for b in r2["schedule"].blocks}
     assert labels == {"Write report", "Review PRs"}
-    # Write report kept at correct 09:00 LOCAL (DST handled), nothing on the past Monday.
+    # Write report kept at 09:00 local (ZoneInfo-localized by _localize), nothing on the past Monday.
     t1 = next(b for b in r2["schedule"].blocks if b.label == "Write report")
     assert t1.start.astimezone(tz).day == 16 and t1.start.astimezone(tz).hour == 9
