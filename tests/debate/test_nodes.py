@@ -159,6 +159,32 @@ class _CaptureCouncil:
         return "[]"
 
 
+class _ScriptedCouncil:
+    """Returns a broken schedule until it sees SCOPED REPAIR, then a fixed one."""
+
+    def __init__(self, broken: str, fixed: str):
+        self.broken = broken
+        self.fixed = fixed
+
+    def arbitrate(self, context: str) -> str:
+        return self.fixed if "SCOPED REPAIR" in context else self.broken
+
+
+def _echo_anthropic():
+    """Patch target that echoes the Arbiter output back out of the validate extraction call."""
+
+    def _create(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        raw = content.split("Arbiter output:\n", 1)[1].split("\n\nExtract", 1)[0].strip()
+        resp = MagicMock()
+        resp.content[0].text = raw
+        return resp
+
+    client = MagicMock()
+    client.messages.create.side_effect = _create
+    return client
+
+
 def test_arbitrate_injects_frozen_blocks_and_budget(base_state):
     council = _CaptureCouncil()
     frozen = [
@@ -218,6 +244,60 @@ def test_arbitrate_non_retry_with_frozen_blocks_has_no_scoped_section(base_state
 
 
 # ── validate ────────────────────────────────────────────────────────────────
+
+
+def test_scoped_repair_converges_in_one_retry(base_state, mock_api_key):
+    # t1 valid both times (09:00–11:00); t2 broken first (07:00–08:00), fixed on retry (11:00–12:00).
+    broken = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T11:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-15T07:00:00+00:00", "end": "2026-06-15T08:00:00+00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    fixed = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T11:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-15T11:00:00+00:00", "end": "2026-06-15T12:00:00+00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    council = _ScriptedCouncil(broken, fixed)
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+            Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(
+            workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600, timezone=None
+        ),
+        "round_number": 1,
+        "validation_attempts": 0,
+        "proposals": {},
+        "critiques": {},
+    }
+
+    arbitrate = make_arbitrate_node(council)
+    with patch("weekforge.debate.nodes.Anthropic", return_value=_echo_anthropic()):
+        validate = make_validate_node(mock_api_key)
+
+        # Round 1: broken -> validation fails, t1 frozen, t2 flagged.
+        state = {**state, **arbitrate(state)}
+        r1 = validate(state)
+        assert r1["schedule"] is None
+        assert [b.label for b in r1["frozen_blocks"]] == ["Write report"]
+        state = {**state, **r1}
+
+        # Round 2: arbiter sees SCOPED REPAIR -> fixes only t2 -> validation passes.
+        state = {**state, **arbitrate(state)}
+        r2 = validate(state)
+
+    assert r2["schedule"] is not None
+    labels = {b.label for b in r2["schedule"].blocks}
+    assert labels == {"Write report", "Review PRs"}
+    # t1 was left exactly where it was (no oscillation)
+    t1 = next(b for b in r2["schedule"].blocks if b.label == "Write report")
+    assert t1.start.hour == 9 and t1.end.hour == 11
 
 def test_validate_parses_valid_json_into_schedule(base_state, mock_api_key):
     valid_json_output = (
