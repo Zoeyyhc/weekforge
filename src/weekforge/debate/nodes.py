@@ -256,12 +256,13 @@ def make_arbitrate_node(council: Council):
             scoped = (
                 "\n\nSCOPED REPAIR — the previous schedule was mostly valid. "
                 "The blocks below are ALREADY FINAL. Do NOT move, resize, or drop them; "
-                "reproduce them unchanged in your output and place nothing that overlaps them:\n"
+                "place nothing that overlaps them:\n"
                 f"{occupied}\n"
                 "Remaining daily focus budget AFTER these fixed blocks (do not exceed):\n"
                 f"{budget_lines}\n"
-                "Only (re-)schedule the tasks flagged as broken in the validation feedback above; "
-                "leave every fixed block exactly as listed."
+                "Output JSON for ONLY the tasks flagged as broken in the validation feedback above. "
+                "Do NOT output the fixed blocks listed here — the system re-attaches them automatically. "
+                "Do not place anything that overlaps them, and stay within the remaining daily budget."
             )
         week_label = state.get("week_start") or "this week"
         context = (
@@ -328,6 +329,11 @@ def make_validate_node(api_key: str):
                 )
                 for b in blocks_data
             ]
+            frozen_in = state.get("frozen_blocks") or []
+            if frozen_in:
+                frozen_labels = {b.label for b in frozen_in}
+                # Frozen blocks are authoritative: drop any model re-emission of them.
+                blocks = frozen_in + [b for b in blocks if b.label not in frozen_labels]
             report = classify_blocks(
                 blocks,
                 state["tasks"],

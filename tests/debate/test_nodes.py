@@ -255,9 +255,7 @@ def test_scoped_repair_converges_in_one_retry(base_state, mock_api_key):
         ' "label": "Review PRs", "task_id": "t2"}]'
     )
     fixed = (
-        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T11:00:00+00:00",'
-        ' "label": "Write report", "task_id": "t1"},'
-        ' {"start": "2026-06-15T11:00:00+00:00", "end": "2026-06-15T12:00:00+00:00",'
+        '[{"start": "2026-06-15T11:00:00+00:00", "end": "2026-06-15T12:00:00+00:00",'
         ' "label": "Review PRs", "task_id": "t2"}]'
     )
     council = _ScriptedCouncil(broken, fixed)
@@ -719,6 +717,89 @@ def test_fmt_busy_converts_utc_to_local_timezone(base_state):
     # Jun 2026 → AEST (UTC+10), so 12:00 UTC = 22:00 local
     assert "22:00" in result
     assert "local" in result
+
+
+def test_validate_merges_frozen_blocks_from_state(mock_api_key):
+    # State already froze a valid Write-report block. The model (mis)behaves and outputs
+    # ONLY a freshly-placed Review block. validate must re-attach the frozen block by code.
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    frozen = TimeBlock(start=datetime(2026, 6, 16, 9, tzinfo=tz),
+                       end=datetime(2026, 6, 16, 11, tzinfo=tz), label="Write report", task_id="t1")
+    model_only_broken = (
+        '[{"start": "2026-06-16T11:00:00", "end": "2026-06-16T12:00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    state = {
+        "tasks": [
+            Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
+            Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "frozen_blocks": [frozen],
+        "arbiter_output": model_only_broken,
+        "round_number": 2,
+        "validation_attempts": 1,
+        "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": "prev", "transcript": [],
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = model_only_broken
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    labels = {b.label for b in result["schedule"].blocks}
+    assert labels == {"Write report", "Review PRs"}   # frozen merged back by code
+
+
+def test_validate_drops_model_reemission_of_frozen(mock_api_key):
+    # Model disobeys and re-emits the frozen task with a CHANGED (bad) time. Code must keep
+    # the frozen version, not the model's.
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    frozen = TimeBlock(start=datetime(2026, 6, 16, 9, tzinfo=tz),
+                       end=datetime(2026, 6, 16, 11, tzinfo=tz), label="Write report", task_id="t1")
+    model = (
+        '[{"start": "2026-06-16T07:00:00", "end": "2026-06-16T09:00:00",'   # moved frozen (bad)
+        ' "label": "Write report", "task_id": "t1"},'
+        ' {"start": "2026-06-16T11:00:00", "end": "2026-06-16T12:00:00",'
+        ' "label": "Review PRs", "task_id": "t2"}]'
+    )
+    state = {
+        "tasks": [Task(id="t1", title="W", estimated_minutes=120),
+                  Task(id="t2", title="R", estimated_minutes=60)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "frozen_blocks": [frozen],
+        "arbiter_output": model, "round_number": 2, "validation_attempts": 1, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": "prev", "transcript": [],
+    }
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = model
+        mock_client.messages.create.return_value = mock_response
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    write = next(b for b in result["schedule"].blocks if b.label == "Write report")
+    assert write.start.astimezone(tz).hour == 9   # frozen version kept, model's 07:00 dropped
 
 
 def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
