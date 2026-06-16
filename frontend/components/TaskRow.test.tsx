@@ -113,4 +113,54 @@ describe("TaskRow — deadline + preferred days", () => {
     await user.click(screen.getByTestId("day-pill-Mon"));
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("disables a past preferred-day chip and ignores clicks on it", () => {
+    const onChange = vi.fn();
+    render(
+      <TaskRow
+        draft={{
+          id: "d1",
+          title: "T",
+          estimatedMinutes: "60",
+          priority: 2,
+          hasDeadline: false,
+          deadlineWeekday: "Fri",
+          preferredDays: [],
+          remark: "",
+        }}
+        onChange={onChange}
+        onRemove={() => {}}
+        disabledDays={["Mon", "Tue"]}
+        weekStart="2026-06-15"
+      />,
+    );
+    const monPill = screen.getByTestId("day-pill-Mon");
+    expect(monPill).toBeDisabled();
+    fireEvent.click(monPill);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves a future day clickable", () => {
+    const onChange = vi.fn();
+    render(
+      <TaskRow
+        draft={{
+          id: "d1",
+          title: "T",
+          estimatedMinutes: "60",
+          priority: 2,
+          hasDeadline: false,
+          deadlineWeekday: "Fri",
+          preferredDays: [],
+          remark: "",
+        }}
+        onChange={onChange}
+        onRemove={() => {}}
+        disabledDays={["Mon", "Tue"]}
+        weekStart="2026-06-15"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("day-pill-Thu"));
+    expect(onChange).toHaveBeenCalledWith({ preferredDays: ["Thu"] });
+  });
 });

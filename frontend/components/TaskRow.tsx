@@ -20,15 +20,23 @@ export function TaskRow({
   draft,
   onChange,
   onRemove,
+  disabledDays = [],
+  weekStart,
 }: {
   draft: TaskDraft;
   onChange: (patch: Partial<TaskDraft>) => void;
   onRemove: () => void;
+  disabledDays?: Weekday[];
+  weekStart?: string;
 }) {
   // The remark plate opens on demand, or stays open if it already holds text.
   const [remarkOpen, setRemarkOpen] = useState(draft.remark.trim() !== "");
 
   function handleDayClick(day: Weekday) {
+    if (disabledDays.includes(day)) {
+      return;
+    }
+
     const idx = draft.preferredDays.indexOf(day);
     if (idx >= 0) {
       onChange({ preferredDays: draft.preferredDays.filter((d) => d !== day) });
@@ -117,10 +125,17 @@ export function TaskRow({
               aria-label="Deadline weekday"
               value={draft.deadlineWeekday}
               onChange={(e) => onChange({ deadlineWeekday: e.target.value as Weekday })}
-              className="animate-inscribe border-b border-rose-400/40 bg-transparent px-1 py-0.5 font-mono text-xs text-rose-300 outline-none"
+              className={`animate-inscribe border-b border-rose-400/40 bg-transparent px-1 py-0.5 font-mono text-xs outline-none ${
+                weekStart && disabledDays.includes(draft.deadlineWeekday) ? "text-muted" : "text-rose-300"
+              }`}
             >
               {DAYS.map((d) => (
-                <option key={d} value={d} className="bg-[#16191f]">
+                <option
+                  key={d}
+                  value={d}
+                  disabled={Boolean(weekStart) && disabledDays.includes(d)}
+                  className="bg-[#16191f]"
+                >
                   {d}
                 </option>
               ))}
@@ -137,13 +152,19 @@ export function TaskRow({
               const pos = draft.preferredDays.indexOf(day);
               const isFirst = pos === 0;
               const isSecond = pos === 1;
+              const isDisabled = Boolean(weekStart) && disabledDays.includes(day);
               return (
                 <button
                   key={day}
                   type="button"
                   data-testid={`day-pill-${day}`}
+                  disabled={isDisabled}
                   onClick={() => handleDayClick(day)}
                   className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold transition-all ${
+                    isDisabled
+                      ? "cursor-not-allowed border-[#22202a] bg-[#101219] text-[#3a3530] opacity-50"
+                      : ""
+                  } ${
                     isFirst
                       ? "scale-105 border-ember/60 bg-ember/30 text-ember shadow-[0_0_8px_rgba(255,107,53,0.3)]"
                       : isSecond

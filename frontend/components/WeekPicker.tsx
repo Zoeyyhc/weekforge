@@ -27,6 +27,10 @@ function shiftMonth(date: Date, delta: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + delta, 1);
 }
 
+function isSameMonth(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
 export function WeekPicker({
   value,
   onChange,
@@ -38,7 +42,25 @@ export function WeekPicker({
   workdayEndHour: number;
   now?: Date;
 }) {
-  const [viewMonth, setViewMonth] = useState(() => startOfMonth(fromISODate(value)));
+  const selectedMonth = startOfMonth(fromISODate(value));
+  const [viewState, setViewState] = useState(() => ({
+    month: selectedMonth,
+    syncedValue: value,
+  }));
+
+  const nextViewState =
+    viewState.syncedValue === value
+      ? viewState
+      : {
+          month: isSameMonth(viewState.month, selectedMonth) ? viewState.month : selectedMonth,
+          syncedValue: value,
+        };
+
+  if (nextViewState !== viewState) {
+    setViewState(nextViewState);
+  }
+
+  const viewMonth = nextViewState.month;
 
   const weeks = monthWeeks(viewMonth);
 
@@ -57,7 +79,9 @@ export function WeekPicker({
           <button
             type="button"
             aria-label="Previous month"
-            onClick={() => setViewMonth((month) => shiftMonth(month, -1))}
+            onClick={() =>
+              setViewState((state) => ({ ...state, month: shiftMonth(state.month, -1) }))
+            }
             className="rounded-md border border-[#272430] bg-[#0c0d12] px-2.5 py-1.5 font-mono text-xs text-muted transition-colors hover:border-[#34303c] hover:text-foreground"
           >
             ←
@@ -65,7 +89,9 @@ export function WeekPicker({
           <button
             type="button"
             aria-label="Next month"
-            onClick={() => setViewMonth((month) => shiftMonth(month, 1))}
+            onClick={() =>
+              setViewState((state) => ({ ...state, month: shiftMonth(state.month, 1) }))
+            }
             className="rounded-md border border-[#272430] bg-[#0c0d12] px-2.5 py-1.5 font-mono text-xs text-muted transition-colors hover:border-[#34303c] hover:text-foreground"
           >
             →
@@ -104,7 +130,12 @@ export function WeekPicker({
                 aria-pressed={isSelected}
                 disabled={!selectable}
                 onClick={() => {
-                  if (selectable) onChange(iso);
+                  if (!selectable) {
+                    return;
+                  }
+
+                  setViewState((state) => ({ ...state, syncedValue: iso }));
+                  onChange(iso);
                 }}
                 className={`grid grid-cols-7 gap-1 rounded-lg border px-2 py-2 text-left transition-colors ${
                   isSelected

@@ -30,17 +30,15 @@ const WEEKDAY_INDEX: Record<Weekday, number> = {
   Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6,
 };
 
-/** Convert a weekday abbreviation to the ISO datetime of that day at 23:59 local time in the current week.
- * If the target day is in the past this week, wraps to the same day next week.
- */
-function deadlineToISO(weekday: Weekday): string {
-  const today = new Date();
-  const mondayOffset = (today.getDay() + 6) % 7; // days since Monday (0 = Mon)
-  const targetOffset = WEEKDAY_INDEX[weekday];
-  const diff = targetOffset - mondayOffset;
-  const adjustedDiff = diff < 0 ? diff + 7 : diff;
-  const target = new Date(today);
-  target.setDate(today.getDate() + adjustedDiff);
+function parseLocalISODate(isoDate: string): Date {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/** Convert a weekday abbreviation to the ISO datetime of that day at 23:59 local time in the selected week. */
+function deadlineToISO(weekday: Weekday, weekStart: string): string {
+  const target = parseLocalISODate(weekStart);
+  target.setDate(target.getDate() + WEEKDAY_INDEX[weekday]);
   target.setHours(23, 59, 0, 0);
   return target.toISOString();
 }
@@ -50,6 +48,7 @@ export function buildRequest(
   tasks: TaskDraft[],
   busyBlocks: BusyBlockDraft[],
   prefs: PrefsDraft,
+  weekStart: string,
 ): StartDebateRequest {
   return {
     tasks: tasks.map((t, i) => ({
@@ -57,7 +56,7 @@ export function buildRequest(
       title: t.title.trim(),
       estimated_minutes: Number(t.estimatedMinutes),
       priority: t.priority,
-      deadline: t.hasDeadline ? deadlineToISO(t.deadlineWeekday) : null,
+      deadline: t.hasDeadline ? deadlineToISO(t.deadlineWeekday, weekStart) : null,
       ...(t.preferredDays.length > 0 && { preferred_days: t.preferredDays }),
       ...(t.remark.trim() !== "" && { remark: t.remark.trim() }),
     })),

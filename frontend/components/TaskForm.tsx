@@ -102,6 +102,17 @@ function validatePrefs(prefs: PrefsDraft): string | null {
   return null;
 }
 
+function pruneDisabledPreferredDays(task: TaskDraft, disabledDays: Weekday[]): TaskDraft {
+  if (!task.preferredDays.some((day) => disabledDays.includes(day))) {
+    return task;
+  }
+
+  return {
+    ...task,
+    preferredDays: task.preferredDays.filter((day) => !disabledDays.includes(day)),
+  };
+}
+
 // ── A consistent header for each step on the right column. ──
 function StepHeader({
   index,
@@ -157,16 +168,12 @@ export function TaskForm({
     }
   }, [onWeekChange, weekStart, weekStartDate, workdayEnd]);
 
-  React.useEffect(() => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.preferredDays.some((d) => disabledDays.includes(d))
-          ? { ...t, preferredDays: t.preferredDays.filter((d) => !disabledDays.includes(d)) }
-          : t,
-      ),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, prefs.workdayEndHour]);
+  const prunedTasks = tasks.map((task) => pruneDisabledPreferredDays(task, disabledDays));
+  const tasksChanged = prunedTasks.some((task, index) => task !== tasks[index]);
+  if (tasksChanged) {
+    setTasks(prunedTasks);
+  }
+  const effectiveTasks = tasksChanged ? prunedTasks : tasks;
 
   function patchTask(i: number, patch: Partial<TaskDraft>) {
     setTasks((prev) => prev.map((t, j) => (j === i ? { ...t, ...patch } : t)));
@@ -176,7 +183,7 @@ export function TaskForm({
   }
 
   function checkStep(i: number): string | null {
-    if (i === 0) return validateTasks(tasks);
+    if (i === 0) return validateTasks(effectiveTasks);
     if (i === 1) return validateBlocks(blocks);
     return validatePrefs(prefs);
   }
@@ -201,21 +208,21 @@ export function TaskForm({
   }
 
   function handleStart() {
-    const err = validateTasks(tasks) ?? validateBlocks(blocks) ?? validatePrefs(prefs);
+    const err = validateTasks(effectiveTasks) ?? validateBlocks(blocks) ?? validatePrefs(prefs);
     if (err) {
       // Surface the error on the step that owns it.
-      if (validateTasks(tasks)) setStep(0);
+      if (validateTasks(effectiveTasks)) setStep(0);
       else if (validateBlocks(blocks)) setStep(1);
       setError(err);
       return;
     }
     setError(null);
-    const titledTasks = tasks.filter((t) => t.title.trim() !== "");
+    const titledTasks = effectiveTasks.filter((t) => t.title.trim() !== "");
     const populatedBlocks = blocks.filter((b) => b.start !== "" && b.end !== "");
-    onStart(buildRequest(titledTasks, populatedBlocks, prefs));
+    onStart(buildRequest(titledTasks, populatedBlocks, prefs, weekStart));
   }
 
-  const summoned = tasks.filter((t) => t.title.trim() !== "").length;
+  const summoned = effectiveTasks.filter((t) => t.title.trim() !== "").length;
   const blocksMarked = blocks.filter((b) => b.start !== "" && b.end !== "").length;
   const isLast = step === INTAKE_STEPS.length - 1;
 
@@ -278,16 +285,14 @@ export function TaskForm({
                 workdayEndHour={workdayEnd}
               />
               <div className="flex flex-col gap-3">
-                {tasks.map((t, i) => (
+                {effectiveTasks.map((t, i) => (
                   <TaskRow
                     key={t.id}
                     draft={t}
                     onChange={(patch) => patchTask(i, patch)}
                     onRemove={() => setTasks((prev) => prev.filter((_, j) => j !== i))}
-                    {...({
-                      disabledDays,
-                      weekStart,
-                    } as Record<string, unknown>)}
+                    disabledDays={disabledDays}
+                    weekStart={weekStart}
                   />
                 ))}
                 <button

@@ -44,4 +44,17 @@ describe("WeekPicker", () => {
     expect(screen.getByText(/July 2026/)).toBeInTheDocument();
     expect(screen.getByTestId("week-row-2026-07-06")).toHaveAttribute("aria-pressed", "true");
   });
+
+  it("resyncs the visible month when the parent value changes across months", () => {
+    const { rerender } = render(
+      <WeekPicker value="2026-06-15" onChange={() => {}} workdayEndHour={18} now={NOW} />
+    );
+
+    expect(screen.getByText(/June 2026/)).toBeInTheDocument();
+
+    rerender(<WeekPicker value="2026-08-03" onChange={() => {}} workdayEndHour={18} now={NOW} />);
+
+    expect(screen.getByText(/August 2026/)).toBeInTheDocument();
+    expect(screen.getByTestId("week-row-2026-08-03")).toHaveAttribute("aria-pressed", "true");
+  });
 });
