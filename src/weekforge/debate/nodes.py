@@ -12,6 +12,7 @@ from anthropic import Anthropic
 from weekforge.debate.debaters import Council
 from weekforge.debate.validation import (
     ValidationReport,
+    _localize,
     classify_blocks,
     remaining_focus_budget,
     validate_blocks,
@@ -66,7 +67,8 @@ def _fmt_prefs(state: DebateState) -> str:
         f"Work hours {p.workday_start_hour}:00–{p.workday_end_hour}:00 LOCAL TIME{tz_clause}, "
         f"max focus {p.max_focus_minutes_per_day}min/day. "
         f"All scheduled blocks MUST fall within this local time window. "
-        f"Output datetimes in UTC with the appropriate offset for {p.timezone or 'UTC'}."
+        f"Output datetimes as LOCAL wall-clock time in {p.timezone or 'UTC'} "
+        f"(e.g. 2026-06-16T09:00:00) with NO timezone offset and NO trailing 'Z'."
     )
 
 
@@ -118,7 +120,8 @@ def make_gather_proposals_node(council: Council):
         week_label = state.get("week_start") or "this week"
         context = (
             f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
-            f"All time block datetimes MUST fall within this week and MUST include a UTC offset (e.g. +00:00).\n\n"
+            f"All datetimes MUST be LOCAL wall-clock in {state['preferences'].timezone or 'UTC'} "
+            f"with NO offset and NO 'Z' (e.g. 2026-06-16T09:00:00).\n\n"
             f"Tasks to schedule:\n{_fmt_tasks(state)}\n\n"
             f"Fixed commitments this week:\n{_fmt_busy(state)}\n\n"
             f"User preferences: {_fmt_prefs(state)}\n\n"
@@ -263,7 +266,8 @@ def make_arbitrate_node(council: Council):
         week_label = state.get("week_start") or "this week"
         context = (
             f"Week to schedule: {week_label} (Monday) through the following Sunday.\n"
-            f"All datetimes in the JSON output MUST fall within this week and MUST include a UTC offset.\n\n"
+            f"All datetimes MUST be LOCAL wall-clock in {state['preferences'].timezone or 'UTC'} "
+            f"with NO offset and NO 'Z' (e.g. 2026-06-16T09:00:00).\n\n"
             f"Tasks:\n{_fmt_tasks(state)}\n\n"
             f"Fixed commitments this week:\n{_fmt_busy(state)}\n\n"
             f"User preferences: {_fmt_prefs(state)}\n\n"
@@ -300,10 +304,11 @@ def make_validate_node(api_key: str):
                 "role": "user",
                 "content": (
                     f"Task IDs available: {[t.id for t in state['tasks']]}\n"
-                    f"Week: {state.get('week_start') or 'not specified'} (all datetimes must be in this week with a UTC offset)\n"
+                    f"Week: {state.get('week_start') or 'not specified'} (all datetimes must be in this week as local wall-clock, no offset)\n"
                     f"Arbiter output:\n{state.get('arbiter_output', '')}\n\n"
                     "Extract a JSON array of time blocks. Each object must have: "
-                    "start (ISO 8601 with timezone), end (ISO 8601 with timezone), "
+                    "start (local wall-clock ISO 8601, e.g. 2026-06-16T09:00:00, NO timezone/offset), "
+                    "end (local wall-clock ISO 8601, NO timezone/offset), "
                     "label (string), task_id (task id string or null). "
                     "Output ONLY the raw JSON array, no markdown."
                 ),
@@ -316,8 +321,8 @@ def make_validate_node(api_key: str):
             blocks_data = json.loads(raw)
             blocks = [
                 TimeBlock(
-                    start=datetime.fromisoformat(b["start"]),
-                    end=datetime.fromisoformat(b["end"]),
+                    start=_localize(b["start"], state["preferences"]),
+                    end=_localize(b["end"], state["preferences"]),
                     label=b["label"],
                     task_id=b.get("task_id"),
                 )

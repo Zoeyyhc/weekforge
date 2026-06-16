@@ -719,3 +719,46 @@ def test_fmt_busy_converts_utc_to_local_timezone(base_state):
     # Jun 2026 → AEST (UTC+10), so 12:00 UTC = 22:00 local
     assert "22:00" in result
     assert "local" in result
+
+
+def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
+    # Model emits 09:00+11:00 (summer offset) for a JUNE Sydney week (real offset +10).
+    # After re-localization it must read as 09:00 local, NOT 08:00 → valid, no false "before work window".
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    wrong_offset_json = (
+        '[{"start": "2026-06-16T09:00:00+11:00", "end": "2026-06-16T11:00:00+11:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    state = {
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "arbiter_output": wrong_offset_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+        "max_rounds": 3,
+        "proposals": {},
+        "critiques": {},
+        "converged": False,
+        "interrupt_reason": None,
+        "human_input": None,
+        "schedule": None,
+        "validation_error": None,
+        "transcript": [],
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = wrong_offset_json
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None        # passes: re-localized to 09:00 local, in window
+    block = result["schedule"].blocks[0]
+    assert block.start.astimezone(tz).hour == 9   # 09:00 local, not 08:00

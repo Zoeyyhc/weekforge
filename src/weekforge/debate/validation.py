@@ -45,6 +45,16 @@ def _tz(preferences: Preferences):
     return ZoneInfo(preferences.timezone) if preferences.timezone else timezone.utc
 
 
+def _localize(value: str, preferences: Preferences) -> datetime:
+    """Parse a wall-clock ISO string and attach the DST-correct local offset.
+
+    Any offset the model emitted is discarded — the wall-clock components are
+    authoritative and `ZoneInfo` supplies the right offset for that date.
+    """
+    dt = datetime.fromisoformat(value)
+    return dt.replace(tzinfo=None).replace(tzinfo=_tz(preferences))
+
+
 def classify_blocks(
     blocks: list[TimeBlock],
     tasks: list[Task],
