@@ -1,0 +1,8 @@
+.venv
+node_modules
+frontend
+*.db
+weekforge_tokens.json
+.env
+.git
+__pycache__
