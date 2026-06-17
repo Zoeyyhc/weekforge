@@ -50,9 +50,19 @@ def test_start_rejects_missing_tasks(client):
     assert resp.status_code == 422
 
 
+def test_debate_requires_auth(anon_client):
+    resp = anon_client.post("/debate", json=SAMPLE_BODY)
+    assert resp.status_code == 401
+
+
 def test_stream_unknown_thread_returns_404(client):
     resp = client.get("/debate/does-not-exist/stream")
     assert resp.status_code == 404
+
+
+def test_stream_requires_auth(anon_client):
+    resp = anon_client.get("/debate/does-not-exist/stream")
+    assert resp.status_code == 401
 
 
 def test_stream_emits_debate_events_and_done(client, anthropic_patch):
@@ -81,11 +91,81 @@ def test_intervene_unknown_thread_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_intervene_requires_auth(anon_client):
+    resp = anon_client.post("/debate/nope/intervene", json={"input": "x"})
+    assert resp.status_code == 401
+
+
+def test_intervene_rejects_other_users_thread(anon_client, token):
+    thread_id = anon_client.post(
+        "/debate",
+        json=SAMPLE_BODY,
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["thread_id"]
+    other = anon_client.post(
+        "/auth/signup",
+        json={"email": "other@b.com", "password": "pw", "display_name": "Other"},
+    ).json()["token"]
+
+    resp = anon_client.post(
+        f"/debate/{thread_id}/intervene",
+        json={"input": "Hijack"},
+        headers={"Authorization": f"Bearer {other}"},
+    )
+
+    assert resp.status_code == 404
+
+
 def test_intervene_accepts_input(client):
     thread_id = client.post("/debate", json=SAMPLE_BODY).json()["thread_id"]
     resp = client.post(f"/debate/{thread_id}/intervene", json={"input": "Prioritise the report"})
     assert resp.status_code == 200
     assert resp.json() == {"status": "accepted"}
+
+
+def test_stream_accepts_token_query_param(anon_client, token, anthropic_patch):
+    thread_id = anon_client.post(
+        "/debate",
+        json=SAMPLE_BODY,
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["thread_id"]
+
+    with anthropic_patch(converge=True):
+        resp = anon_client.get(f"/debate/{thread_id}/stream?token={token}")
+        events = _parse_sse(resp.text)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert any(e["type"] == "done" for e in events)
+
+
+def test_stream_query_token_requires_known_user(anon_client, token, unknown_user_token):
+    thread_id = anon_client.post(
+        "/debate",
+        json=SAMPLE_BODY,
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["thread_id"]
+
+    resp = anon_client.get(f"/debate/{thread_id}/stream?token={unknown_user_token}")
+
+    assert resp.status_code == 401
+    assert resp.json() == {"detail": "Unknown user"}
+
+
+def test_stream_rejects_other_users_thread(anon_client, token):
+    thread_id = anon_client.post(
+        "/debate",
+        json=SAMPLE_BODY,
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["thread_id"]
+    other = anon_client.post(
+        "/auth/signup",
+        json={"email": "other@b.com", "password": "pw", "display_name": "Other"},
+    ).json()["token"]
+
+    resp = anon_client.get(f"/debate/{thread_id}/stream?token={other}")
+
+    assert resp.status_code == 404
 
 
 def test_full_hitl_cycle(client, anthropic_patch):

@@ -7,8 +7,11 @@ MockCouncil and a temp DB.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Callable
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from weekforge.api.schemas import (
     InterventionRequest,
@@ -17,26 +20,48 @@ from weekforge.api.schemas import (
 )
 from weekforge.api.sessions import SessionManager
 from weekforge.api.sse import format_sse
+from weekforge.auth.store import User
 from weekforge.debate.debaters import Council
 from weekforge.debate.runner import run_debate
 
 
-def create_router(council: Council, api_key: str, db_path: str, sessions: SessionManager) -> APIRouter:
+def create_router(
+    council: Council,
+    api_key: str,
+    db_path: str,
+    sessions: SessionManager,
+    current_user: Callable[..., User],
+    secret: str,
+) -> APIRouter:
     router = APIRouter()
+    bearer = HTTPBearer(auto_error=False)
 
     @router.get("/health")
     def health() -> dict:
         return {"status": "ok"}
 
     @router.post("/debate", response_model=StartDebateResponse)
-    def start_debate(request: StartDebateRequest) -> StartDebateResponse:
-        thread_id = sessions.create(request)
+    def start_debate(
+        request: StartDebateRequest,
+        user: User = Depends(current_user),
+    ) -> StartDebateResponse:
+        thread_id = sessions.create(request, user.id)
         return StartDebateResponse(thread_id=thread_id)
 
     @router.get("/debate/{thread_id}/stream")
-    def stream_debate(thread_id: str) -> StreamingResponse:
+    def stream_debate(
+        thread_id: str,
+        token: str | None = Query(default=None),
+        creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    ) -> StreamingResponse:
+        if token is not None:
+            creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        if creds is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        user = current_user(creds)
+
         session = sessions.get(thread_id)
-        if session is None:
+        if session is None or session.user_id != user.id:
             raise HTTPException(status_code=404, detail="Unknown thread_id")
 
         resume_value = sessions.pop_intervention(thread_id)
@@ -63,8 +88,13 @@ def create_router(council: Council, api_key: str, db_path: str, sessions: Sessio
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @router.post("/debate/{thread_id}/intervene")
-    def intervene(thread_id: str, request: InterventionRequest) -> dict:
-        if sessions.get(thread_id) is None:
+    def intervene(
+        thread_id: str,
+        request: InterventionRequest,
+        user: User = Depends(current_user),
+    ) -> dict:
+        session = sessions.get(thread_id)
+        if session is None or session.user_id != user.id:
             raise HTTPException(status_code=404, detail="Unknown thread_id")
         sessions.set_intervention(thread_id, request.input)
         return {"status": "accepted"}

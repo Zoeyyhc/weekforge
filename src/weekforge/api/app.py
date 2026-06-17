@@ -46,7 +46,16 @@ def create_app(
     app.state.user_store = user_store
     get_current_user = make_get_current_user(user_store, auth_secret)
     app.include_router(create_auth_router(user_store, auth_secret, get_current_user))
-    app.include_router(create_router(council=council, api_key=api_key, db_path=db_path, sessions=sessions))
+    app.include_router(
+        create_router(
+            council=council,
+            api_key=api_key,
+            db_path=db_path,
+            sessions=sessions,
+            current_user=get_current_user,
+            secret=auth_secret,
+        )
+    )
     app.include_router(create_ics_router())
 
     return app
