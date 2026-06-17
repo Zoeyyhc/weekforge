@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/authContext";
 import { defaultWeekMonday, toISODate, toLocalMidnightISO } from "@/lib/weekWindow";
 import { useDebateStream } from "@/lib/useDebateStream";
 import { useFreshActivity } from "@/lib/useFreshActivity";
@@ -29,12 +31,18 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const { user, status, signOut } = useAuth();
   const { state, maxRounds, start, intervene, reset } = useDebateStream();
   const [weekStart, setWeekStart] = useState(() =>
     toISODate(defaultWeekMonday(new Date(), 18)),
   );
   const latestWeekStartRef = useRef(weekStart);
   const showForm = state.status === "idle";
+
+  useEffect(() => {
+    if (status === "anon") router.push("/login");
+  }, [status, router]);
 
   // Celebrate the verdict exactly once per debate. Fires when the stream lands
   // on "done"; the flag resets when the user starts over (status → idle).
@@ -107,6 +115,10 @@ export default function Home() {
     start({ ...req, week_start: weekStart });
   }
 
+  if (status !== "authed") {
+    return null;
+  }
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
       <AppAtmosphere />
@@ -119,9 +131,19 @@ export default function Home() {
             forge your week in the crucible
           </p>
         </div>
-        <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
-          {STATUS_LABEL[state.status]}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs text-muted">{user?.display_name}</span>
+          <button
+            type="button"
+            onClick={signOut}
+            className="rounded-full border border-border px-3 py-1 text-xs text-foreground/80 transition-colors hover:border-amber/50 hover:text-foreground"
+          >
+            Leave the forge
+          </button>
+          <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
+            {STATUS_LABEL[state.status]}
+          </span>
+        </div>
       </header>
 
       {showForm && (

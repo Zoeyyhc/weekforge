@@ -1,14 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import Home from "./page";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const mockUseDebateStream = vi.fn();
+const mockUseAuth = vi.fn();
 const startSpy = vi.fn();
 const interveneSpy = vi.fn();
 const resetSpy = vi.fn();
+const signOutSpy = vi.fn();
+const push = vi.fn();
 
 vi.mock("@/lib/useDebateStream", () => ({
   useDebateStream: () => mockUseDebateStream(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
+
+vi.mock("@/lib/authContext", () => ({
+  useAuth: () => mockUseAuth(),
 }));
 
 vi.mock("@/lib/useFreshActivity", () => ({
@@ -55,14 +65,24 @@ vi.mock("@/lib/api", () => ({
   exportIcs: vi.fn(),
 }));
 
+async function loadHome() {
+  return (await import("@/app/app/page")).default;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.resetModules();
   mockUseDebateStream.mockReturnValue({
     state: { status: "idle", events: [], schedule: null, error: null, interrupt: null },
     maxRounds: 3,
     start: startSpy,
     intervene: interveneSpy,
     reset: resetSpy,
+  });
+  mockUseAuth.mockReturnValue({
+    user: { id: "u1", email: "a@b.com", display_name: "Ada" },
+    status: "authed",
+    signOut: signOutSpy,
   });
 });
 
@@ -71,20 +91,50 @@ afterEach(() => {
 });
 
 describe("Home page", () => {
-  it("always shows the task form without a login gate", () => {
+  it("redirects to /login when unauthenticated", async () => {
+    mockUseAuth.mockReturnValue({
+      user: null,
+      status: "anon",
+      signOut: vi.fn(),
+    });
+    const Home = await loadHome();
+
+    render(<Home />);
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/login"));
+  });
+
+  it("always shows the task form without a login gate", async () => {
+    const Home = await loadHome();
+
     render(<Home />);
 
     expect(screen.getByTestId("task-form")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /sign in with google/i })).not.toBeInTheDocument();
   });
 
-  it("passes the current week start to TaskForm", () => {
+  it("shows the display name and lets the user leave the forge", async () => {
+    const Home = await loadHome();
+
+    render(<Home />);
+
+    expect(screen.getByText("Ada")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Leave the forge" }));
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the current week start to TaskForm", async () => {
+    const Home = await loadHome();
+
     render(<Home />);
 
     expect(screen.getByTestId("selected-week")).toHaveTextContent("2026-06-");
   });
 
-  it("updates the displayed week when onWeekChange is called", () => {
+  it("updates the displayed week when onWeekChange is called", async () => {
+    const Home = await loadHome();
+
     render(<Home />);
 
     fireEvent.click(screen.getByRole("button", { name: /pick next week/i }));
@@ -92,7 +142,9 @@ describe("Home page", () => {
     expect(screen.getByTestId("selected-week")).toHaveTextContent("2026-06-22");
   });
 
-  it("starts the debate with the current week_start and no busy blocks", () => {
+  it("starts the debate with the current week_start and no busy blocks", async () => {
+    const Home = await loadHome();
+
     render(<Home />);
 
     fireEvent.click(screen.getByRole("button", { name: /start debate/i }));
@@ -105,7 +157,7 @@ describe("Home page", () => {
     );
   });
 
-  it("pops the Herald modal when the debate interrupts for a vote", () => {
+  it("pops the Herald modal when the debate interrupts for a vote", async () => {
     mockUseDebateStream.mockReturnValue({
       state: {
         status: "interrupted",
@@ -124,6 +176,7 @@ describe("Home page", () => {
       intervene: interveneSpy,
       reset: resetSpy,
     });
+    const Home = await loadHome();
 
     render(<Home />);
 
