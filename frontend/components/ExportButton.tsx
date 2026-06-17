@@ -1,22 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { ExportResult } from "@/lib/api";
 
-export function ExportButton({
-  onExport,
-}: {
-  onExport: () => Promise<ExportResult>;
-}) {
+export function ExportButton({ onExport }: { onExport: () => Promise<Blob> }) {
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   async function handleClick() {
     setBusy(true);
     setError(null);
     try {
-      setResult(await onExport());
+      const blob = await onExport();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "weekforge.ics";
+      a.click();
+      URL.revokeObjectURL(url);
+      setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed.");
     } finally {
@@ -32,19 +34,15 @@ export function ExportButton({
         disabled={busy}
         className="self-start rounded-lg bg-gradient-to-br from-ember to-amber px-4 py-2 text-sm font-semibold text-[#1a1208] disabled:opacity-50"
       >
-        {busy ? "Adding…" : "Add to Google Calendar"}
+        {busy ? "Building…" : "Download .ics"}
       </button>
       <p className="text-xs leading-relaxed text-muted" data-testid="export-safety-note">
-        WeekForge only adds and updates its own blocks — your existing events are never
-        changed.
+        WeekForge builds a calendar file — your existing calendar is never touched. Import it
+        into Google, Apple, or Outlook.
       </p>
-      {result && (
+      {done && (
         <p className="text-sm text-emerald-300" data-testid="export-result">
-          Wrote {result.written} events. Refreshed WeekForge&apos;s own blocks and left
-          everything else untouched.{" "}
-          <a href={result.calendar_url} className="underline" target="_blank" rel="noreferrer">
-            Open Google Calendar
-          </a>
+          Calendar file downloaded. Open it to import this week into your calendar app.
         </p>
       )}
       {error && (
