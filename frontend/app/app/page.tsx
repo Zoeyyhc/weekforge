@@ -9,6 +9,7 @@ import { TaskForm } from "@/components/TaskForm";
 import { ForgeLogo } from "@/components/ForgeLogo";
 import { AppAtmosphere } from "@/components/AppAtmosphere";
 import { ForgedModal } from "@/components/ForgedModal";
+import { HeraldModal } from "@/components/HeraldModal";
 import { DebateTimeline } from "@/components/DebateTimeline";
 import { DebateStatusBand } from "@/components/DebateStatusBand";
 import { CouncilRoster } from "@/components/CouncilRoster";
@@ -17,7 +18,7 @@ import { WeekCalendar } from "@/components/WeekCalendar";
 import { ExportButton } from "@/components/ExportButton";
 import { DebateStatus } from "@/lib/debateReducer";
 import { exportIcs } from "@/lib/api";
-import { TimeBlock, StartDebateRequest } from "@/lib/types";
+import { TimeBlock, StartDebateRequest, InterruptMsg } from "@/lib/types";
 
 const STATUS_LABEL: Record<DebateStatus, string> = {
   idle: "Ready",
@@ -48,6 +49,17 @@ export default function Home() {
       setShowForged(false);
     }
   }, [state.status]);
+  // The Herald rises to summarise the divided council whenever the debate
+  // interrupts for your ruling. Dismissing it ("read the full debate") records
+  // which interrupt was waved off, so a fresh interrupt re-summons the Herald
+  // without an effect.
+  const [dismissedInterrupt, setDismissedInterrupt] =
+    useState<InterruptMsg | null>(null);
+  const heraldOpen =
+    state.status === "interrupted" &&
+    !!state.interrupt &&
+    state.interrupt !== dismissedInterrupt;
+
   // A speaker is "live" only briefly after their event; during the silent
   // convergence/arbiter gaps the band/roster fall back to "deliberating…".
   const speakingActive = useFreshActivity(state.events.length, 3500);
@@ -161,13 +173,20 @@ export default function Home() {
                 {state.error}
               </p>
             )}
-            {state.interrupt && state.status === "interrupted" && (
+            {state.interrupt && state.status === "interrupted" && !heraldOpen && (
               <InterventionPanel interrupt={state.interrupt} onSubmit={intervene} />
             )}
             <DebateTimeline events={state.events} status={state.status} />
           </section>
         </div>
       )}
+
+      <HeraldModal
+        open={heraldOpen}
+        interrupt={state.interrupt}
+        onSubmit={intervene}
+        onDismiss={() => setDismissedInterrupt(state.interrupt)}
+      />
 
       <ForgedModal
         open={showForged}

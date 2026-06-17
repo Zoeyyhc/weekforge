@@ -43,6 +43,7 @@ class DebateState(TypedDict):
     converged: bool
     interrupt_reason: str | None   # non-None triggers human_interrupt routing
     human_input: str | None        # set by human_interrupt_node after resume
+    proposal_summaries: NotRequired[dict[str, str]]  # Herald's one-line distillation per champion
 
     # ── Arbitration & output ───────────────────────────────────────────────
     arbiter_output: str | None     # raw text from Arbiter's synthesis

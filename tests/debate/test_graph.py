@@ -22,9 +22,11 @@ def test_route_not_converged_no_interrupt_goes_to_gather():
     assert _route_after_convergence_check(state) == "gather_proposals"
 
 
-def test_route_stalled_goes_to_human_interrupt():
+def test_route_stalled_goes_to_herald_before_the_interrupt():
+    # The Herald summarises the divided council before the vote pauses, so its
+    # distillation is in state when human_interrupt fires.
     state = {"converged": False, "interrupt_reason": "Council stalled after 3 rounds."}
-    assert _route_after_convergence_check(state) == "human_interrupt"
+    assert _route_after_convergence_check(state) == "herald"
 
 
 def test_route_stalled_without_human_goes_to_arbitrate():
@@ -68,10 +70,21 @@ def test_build_graph_has_expected_nodes(mock_council, mock_api_key):
     graph = build_graph(council=mock_council, api_key=mock_api_key, db_path=":memory:")
     node_names = set(graph.nodes.keys())
     expected = {
-        "gather_proposals", "critique", "check_convergence",
+        "gather_proposals", "critique", "check_convergence", "herald",
         "human_interrupt", "arbitrate", "validate", "finalize",
     }
     assert expected.issubset(node_names)
+
+
+def test_herald_routes_to_human_interrupt(mock_council, mock_api_key):
+    """The Herald summarises, then hands off to the vote — it never decides itself."""
+    graph = build_graph(council=mock_council, api_key=mock_api_key, db_path=":memory:")
+    targets = {
+        edge.target
+        for edge in graph.get_graph().edges
+        if edge.source == "herald"
+    }
+    assert targets == {"human_interrupt"}
 
 
 def test_human_interrupt_routes_straight_to_arbitrate(mock_council, mock_api_key):

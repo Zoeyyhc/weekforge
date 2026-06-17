@@ -40,7 +40,7 @@ def run_debate(
 
     Yields dicts with a 'type' key:
       - {"type": "debate_event", "round": int, "speaker": str, "content": str, "event_type": str}
-      - {"type": "interrupt", "interrupt_reason": str, "proposals": dict, "thread_id": str}
+      - {"type": "interrupt", "interrupt_reason": str, "proposals": dict, "proposal_summaries": dict, "thread_id": str}
       - {"type": "done", "schedule": Schedule | None, "degraded": bool,
          "validation_warnings": str | None, "thread_id": str}
 
@@ -111,6 +111,7 @@ def run_debate(
                         "type": "interrupt",
                         "interrupt_reason": interrupt_value.get("interrupt_reason", "Human input needed."),
                         "proposals": interrupt_value.get("proposals", {}),
+                        "proposal_summaries": interrupt_value.get("proposal_summaries", {}),
                         "thread_id": thread_id,
                     }
                 continue
