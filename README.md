@@ -68,6 +68,12 @@ The semantic guardrail rejects anything that violates reality: outside your work
 - **No calendar import yet.** Enter your existing commitments as busy blocks in the form; WeekForge cannot read them from a calendar in this version.
 - Every generated event is stamped `X-WEEKFORGE:1` so a future import path can skip WeekForge's own output and never double-count it as busy.
 
+## Accounts and saved rhythm
+
+The planning console requires a local WeekForge account: email, password, and display name. Accounts are stored in the same local SQLite database as the debate checkpointer, passwords are bcrypt-hashed, and session tokens are signed with `WEEKFORGE_AUTH_SECRET`.
+
+When you start a debate, WeekForge saves your scheduling rhythm — workday start, workday end, daily focus cap, and timezone — and pre-fills it the next time you return. This does not add OAuth, third-party auth, calendar import, or calendar write access.
+
 ## Getting started
 
 **Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js (frontend), an Anthropic API key.
@@ -76,6 +82,7 @@ The semantic guardrail rejects anything that violates reality: outside your work
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+export WEEKFORGE_AUTH_SECRET=replace-with-a-long-random-secret
 
 # Optional: run the Arbiter on a stronger model than the debaters
 export WEEKFORGE_ARBITER_MODEL=anthropic/claude-sonnet-...   # falls back to WEEKFORGE_MODEL
@@ -114,7 +121,8 @@ src/weekforge/
     runner.py      # streaming debate generator
     state.py       # DebateState
   providers/     # ICSCalendarWriter (export) + ICSCalendarProvider (future import)
-  api/           # FastAPI app, debate + ICS export routes, SSE streaming
+  auth/          # SQLite local accounts, bcrypt password hashes, HS256 JWT helpers
+  api/           # FastAPI app, auth, authenticated debate + ICS export routes, SSE streaming
   models.py      # Task / TimeBlock / Schedule / Preferences
 frontend/        # Next.js debate-timeline UI + editable schedule
 docs/            # architecture, design specs, and TDD plans
