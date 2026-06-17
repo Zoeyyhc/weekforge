@@ -27,7 +27,7 @@ Instead of one model silently optimizing a black box, WeekForge convenes a **cou
 | 🎯 **Focus Batcher** | Deep work | Long uninterrupted blocks, batched similar tasks — because fragmentation is the enemy of great work |
 | ⚖️ **The Arbiter** | The whole picture | A schedule that honors all three as well as reality allows — and *names the trade-offs it accepted* |
 
-They propose, critique each other, and converge. When they stall, **you** step in as the final arbiter: side with an agent, add a constraint, or veto an idea. What you get back is a time-blocked week **plus the full reasoning chain that produced it** — not a verdict from nowhere.
+They propose, critique each other, and converge. When they stall, **the Herald** steps forward and distils each side into a single line, then **you** rule as the final arbiter: side with an agent, add a constraint, or veto an idea (the full debate is always one click away). What you get back is a time-blocked week **plus the full reasoning chain that produced it** — not a verdict from nowhere.
 
 > The visible debate is the headline feature. Weekly planning is just the first application of a **domain-agnostic decision engine**: any problem where specialists with competing objectives must reach a justified, auditable decision.
 
@@ -37,7 +37,7 @@ They propose, critique each other, and converge. When they stall, **you** step i
  gather_proposals ──► critique ──► check_convergence ─┬─ converged ───► arbitrate ──► validate ──► finalize
         ▲                                             │                                  │  ▲          │
         └──────────── more rounds ────────────────────┤                                  └──┘          ▼
-                                                       └─ stalled ──► human_interrupt ──► (bounded loop)   schedule
+                                                       └─ stalled ──► herald ──► human_interrupt ──► (bounded loop)   schedule
 ```
 
 - **CrewAI** defines *who debates* — the four agents, their personas, goals, and backstories.

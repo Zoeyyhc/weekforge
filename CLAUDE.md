@@ -17,13 +17,13 @@ cd frontend && npm test       # vitest run
 
 ## Architecture map
 
-- `src/weekforge/debate/` — the engine. `graph.py` (LangGraph StateGraph + SQLite checkpointer), `nodes.py` (gather/critique/converge/arbitrate/validate/finalize nodes), `validation.py` (the deterministic guardrail: `classify_blocks`, `compute_week_window`, `remaining_focus_budget`, `_localize` DST helper), `state.py` (`DebateState`), `runner.py` (`run_debate` streaming generator), `debaters.py` (CrewAI council).
+- `src/weekforge/debate/` — the engine. `graph.py` (LangGraph StateGraph + SQLite checkpointer), `nodes.py` (gather/critique/converge/herald/arbitrate/validate/finalize nodes; `herald` = neutral pre-vote summariser on the stall→interrupt path, emits `proposal_summaries`), `validation.py` (the deterministic guardrail: `classify_blocks`, `compute_week_window`, `remaining_focus_budget`, `_localize` DST helper), `state.py` (`DebateState`), `runner.py` (`run_debate` streaming generator), `debaters.py` (CrewAI council).
 - `src/weekforge/providers/ics_writer.py` — `ICSCalendarWriter`: schedule blocks → downloadable `.ics` bytes; tags every event `X-WEEKFORGE:1`.
 - `src/weekforge/providers/calendar.py` — `ICSCalendarProvider` (path-based import, unused/reserved for future import path).
 - `src/weekforge/api/ics_routes.py` — `POST /calendar/ics/export`: JSON body → `text/calendar` attachment.
 - `src/weekforge/api/` — FastAPI app (`app.py`/`server.py`), routes (`routes.py` debate, `ics_routes.py` export), `sse.py`, `sessions.py`.
 - `src/weekforge/models.py` — Pydantic `Task` / `TimeBlock` / `Schedule` / `Preferences`.
-- `frontend/` — Next.js app; debate timeline UX, `ExportButton`, `ForgedModal`, `ScheduleView`.
+- `frontend/` — Next.js app; debate timeline UX, `ExportButton`, `ForgedModal`, `ScheduleView`, `HeraldModal` + `HeraldSigil` (pre-vote summariser modal, rises on interrupt).
 
 ## Red lines — do not violate
 
