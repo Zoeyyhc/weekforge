@@ -38,70 +38,17 @@ export function streamUrl(threadId: string, base: string = API_BASE): string {
   return `${base}/debate/${threadId}/stream`;
 }
 
-export interface CalendarInfo {
-  id: string;
-  summary: string | null;
-  primary: boolean;
-  selected_by_default: boolean;
-}
-
-export interface ExportResult {
-  written: number;
-  calendar_url: string;
-}
-
-export async function googleStatus(base: string = API_BASE): Promise<boolean> {
-  const res = await fetch(`${base}/auth/google/status`);
-  if (!res.ok) throw new Error(`Failed to read Google status: ${res.status}`);
-  const data = await res.json();
-  return Boolean(data.connected);
-}
-
-export function googleLoginUrl(base: string = API_BASE): string {
-  return `${base}/auth/google/login`;
-}
-
-export function googleDisconnectUrl(base: string = API_BASE): string {
-  return `${base}/auth/google/disconnect`;
-}
-
-export async function googleDisconnect(base: string = API_BASE): Promise<void> {
-  const res = await fetch(`${base}/auth/google/disconnect`, { method: "POST" });
-  if (!res.ok) throw new Error(`Failed to disconnect: ${res.status}`);
-}
-
-export async function listCalendars(base: string = API_BASE): Promise<CalendarInfo[]> {
-  const res = await fetch(`${base}/calendar/google/calendars`);
-  if (!res.ok) throw new Error(`Failed to list calendars: ${res.status}`);
-  const data = await res.json();
-  return data.calendars as CalendarInfo[];
-}
-
-export async function importBusy(
-  weekStart: string,
-  calendarIds: string[],
-  base: string = API_BASE,
-): Promise<TimeBlock[]> {
-  const params = new URLSearchParams();
-  params.set("week_start", weekStart);
-  for (const id of calendarIds) params.append("calendar_ids", id);
-  const res = await fetch(`${base}/calendar/google/busy?${params.toString()}`);
-  if (!res.ok) throw new Error(`Failed to import busy blocks: ${res.status}`);
-  const data = await res.json();
-  return data.busy_blocks as TimeBlock[];
-}
-
-export async function exportSchedule(
+export async function exportIcs(
   weekStart: string,
   blocks: TimeBlock[],
   timeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
   base: string = API_BASE,
-): Promise<ExportResult> {
-  const res = await fetch(`${base}/calendar/google/export`, {
+): Promise<Blob> {
+  const res = await fetch(`${base}/calendar/ics/export`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ week_start: weekStart, blocks, time_zone: timeZone }),
   });
-  if (!res.ok) throw new Error(`Failed to export schedule: ${res.status}`);
-  return (await res.json()) as ExportResult;
+  if (!res.ok) throw new Error(`Failed to build calendar file: ${res.status}`);
+  return res.blob();
 }
