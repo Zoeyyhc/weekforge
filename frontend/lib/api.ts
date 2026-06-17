@@ -1,7 +1,13 @@
 import { StartDebateRequest, TimeBlock } from "@/lib/types";
+import { API_BASE } from "@/lib/apiBase";
+import { getToken } from "@/lib/auth";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8001";
+export { API_BASE };
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export async function startDebate(
   request: StartDebateRequest,
@@ -9,7 +15,7 @@ export async function startDebate(
 ): Promise<string> {
   const res = await fetch(`${base}/debate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(request),
   });
   if (!res.ok) {
@@ -26,7 +32,7 @@ export async function sendIntervention(
 ): Promise<void> {
   const res = await fetch(`${base}/debate/${threadId}/intervene`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ input }),
   });
   if (!res.ok) {
@@ -35,7 +41,9 @@ export async function sendIntervention(
 }
 
 export function streamUrl(threadId: string, base: string = API_BASE): string {
-  return `${base}/debate/${threadId}/stream`;
+  const token = getToken();
+  const q = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `${base}/debate/${threadId}/stream${q}`;
 }
 
 export async function exportIcs(
