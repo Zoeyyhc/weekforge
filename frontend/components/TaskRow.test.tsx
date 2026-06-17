@@ -68,6 +68,22 @@ describe("TaskRow — deadline + preferred days", () => {
     expect(screen.getByLabelText(/deadline weekday/i)).toBeInTheDocument();
   });
 
+  it("disables past deadline options in the deadline select", () => {
+    render(
+      <TaskRow
+        draft={{ ...draft, hasDeadline: true }}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+        disabledDays={["Mon", "Tue"]}
+        weekStart="2026-06-15"
+      />,
+    );
+
+    expect(screen.getByRole("option", { name: "Mon" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Tue" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Wed" })).not.toBeDisabled();
+  });
+
   it("calls onChange with hasDeadline toggled when deadline pill is clicked", async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
@@ -112,5 +128,55 @@ describe("TaskRow — deadline + preferred days", () => {
     );
     await user.click(screen.getByTestId("day-pill-Mon"));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("disables a past preferred-day chip and ignores clicks on it", () => {
+    const onChange = vi.fn();
+    render(
+      <TaskRow
+        draft={{
+          id: "d1",
+          title: "T",
+          estimatedMinutes: "60",
+          priority: 2,
+          hasDeadline: false,
+          deadlineWeekday: "Fri",
+          preferredDays: [],
+          remark: "",
+        }}
+        onChange={onChange}
+        onRemove={() => {}}
+        disabledDays={["Mon", "Tue"]}
+        weekStart="2026-06-15"
+      />,
+    );
+    const monPill = screen.getByTestId("day-pill-Mon");
+    expect(monPill).toBeDisabled();
+    fireEvent.click(monPill);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves a future day clickable", () => {
+    const onChange = vi.fn();
+    render(
+      <TaskRow
+        draft={{
+          id: "d1",
+          title: "T",
+          estimatedMinutes: "60",
+          priority: 2,
+          hasDeadline: false,
+          deadlineWeekday: "Fri",
+          preferredDays: [],
+          remark: "",
+        }}
+        onChange={onChange}
+        onRemove={() => {}}
+        disabledDays={["Mon", "Tue"]}
+        weekStart="2026-06-15"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("day-pill-Thu"));
+    expect(onChange).toHaveBeenCalledWith({ preferredDays: ["Thu"] });
   });
 });

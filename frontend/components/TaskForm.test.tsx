@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TaskForm } from "@/components/TaskForm";
 import type { UserEvent } from "@testing-library/user-event";
+
+afterEach(() => vi.useRealTimers());
 
 // The intake is a stepped wizard (Tasks → Busy Blocks → Preferences); "Convene"
 // only appears on the final step. Walk forward via the "Next" button.
@@ -170,6 +172,10 @@ describe("TaskForm", () => {
       />,
     );
 
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
     fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
     fireEvent.click(screen.getByRole("button", { name: /convene the council/i }));
@@ -177,6 +183,51 @@ describe("TaskForm", () => {
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(onStart.mock.calls[0][0].tasks[0].preferred_days).toBeUndefined();
     vi.useRealTimers();
+  });
+
+  it("repairs an invalid deadline when it is toggled on late in the week", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-19T19:00:00"));
+    const onStart = vi.fn();
+    renderTaskForm({ onStart });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /deadline/i })[0]);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText(/deadline weekday/i)).toHaveValue("Sat");
+
+    fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^next ·/i }));
+    fireEvent.click(screen.getByRole("button", { name: /convene the council/i }));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    const deadline = new Date(onStart.mock.calls[0][0].tasks[0].deadline);
+    expect(deadline.getDay()).toBe(6);
+    vi.useRealTimers();
+  });
+
+  it("repairs an existing deadline when the selected week changes and the chosen day becomes disabled", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-19T19:00:00"));
+    const { rerender } = renderTaskForm({
+      weekStart: "2026-06-22",
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /deadline/i })[0]);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText(/deadline weekday/i)).toHaveValue("Fri");
+
+    rerender(
+      <TaskForm onStart={vi.fn()} weekStart="2026-06-15" onWeekChange={() => {}} />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText(/deadline weekday/i)).toHaveValue("Sat");
   });
 
   it("advances weekStart when workday end makes the selected week non-selectable", async () => {
