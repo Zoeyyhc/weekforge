@@ -23,11 +23,13 @@ the full `calendar` scope. For a product open to public sign-ups this is impract
 
 Go **fully API-free and anonymous**. Remove all Google OAuth and Calendar API code.
 
-- **Import** = user uploads an `.ics` file; WeekForge parses busy blocks in memory.
 - **Export** = WeekForge generates an `.ics` file the user downloads and imports into
   whatever calendar they like (Google / Apple / Outlook).
-- **No accounts, no login.** Each visit is a fresh anonymous session: upload → debate →
-  download. Nothing persists beyond the in-flight debate session.
+- **Import is deferred.** This iteration ships **export only**. The council learns existing
+  commitments from the form's **existing manual busy-block entry** (`BusyBlockRow`), not
+  from any calendar. ICS *upload* import is a future iteration (see Non-goals).
+- **No accounts, no login.** Each visit is a fresh anonymous session: enter tasks + busy
+  blocks → debate → download `.ics`. Nothing persists beyond the in-flight debate session.
 
 This eliminates the entire OAuth verification problem — there is no Google API left, so
 no consent screen, no privacy-policy/domain requirements, and no "unverified app" warning.
@@ -37,17 +39,25 @@ no consent screen, no privacy-policy/domain requirements, and no "unverified app
 | Question | Decision |
 |---|---|
 | Target audience | Public sign-ups (real users) |
-| Import mechanism | Fully API-free `.ics` upload |
+| Calendar export | API-free `.ics` download |
+| Calendar import | **Deferred** — manual busy-block entry only this iteration |
 | Accounts / login | None — fully anonymous |
-| Recurring events (RRULE) | **Not** expanded in v1 — known limitation |
+
+**Why import is deferred:** Google only exports the *entire* calendar (no date-range, no
+single-event export). Real calendars are dominated by recurring events stored as a single
+master `VEVENT` + `RRULE` whose `DTSTART` is the series origin — so a naive single-event
+walk drops them and the council would schedule over standing meetings. Doing import *well*
+means RRULE expansion (`recurring-ical-events`, EXDATE/modified-instance handling). That is
+its own iteration; this one ships the high-value, low-risk export path first.
 
 ## Scope
 
-**In scope:** ICS upload import, ICS download export, removal of all Google API/OAuth
-code, UI changes for upload + download, doc/red-line updates.
+**In scope:** ICS download **export**, removal of all Google API/OAuth code (both import
+and export paths), removal of the Google login gate (anonymous), UI for download,
+doc/red-line updates. Manual busy-block entry already exists and is retained unchanged.
 
-**Out of scope (explicit non-goals):** user accounts, persistence across visits,
-recurring-event (RRULE) expansion, read via a calendar's secret iCal URL.
+**Out of scope (explicit non-goals):** **all calendar import** (ICS upload, RRULE
+expansion, secret iCal URL) — a future iteration; user accounts; persistence across visits.
 
 ## Architecture
 
@@ -61,58 +71,52 @@ This touches only the calendar I/O edges.
 - `RealGoogleCalendarClient`, `GoogleCalendarProvider`, `GoogleCalendarWriter` in
   `src/weekforge/providers/google_calendar.py` (delete the module if nothing else remains)
 - `src/weekforge/api/google_routes.py`
-- Frontend: `GoogleConnect.tsx`, `useGoogleCalendar.ts`, `CalendarPicker.tsx` (+ their tests)
+- Frontend: `GoogleConnect.tsx`, `useGoogleCalendar.ts`, `CalendarPicker.tsx` (+ their tests),
+  and the page's Google import state/UI (`ImportPreview` usage, `handleImport`, `imported`).
 - Dependencies: `google-auth*`, `google-api-python-client` / `googleapiclient`
 - Env vars: `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`, `GOOGLE_TOKEN_PATH`
 - `docs/google-oauth-verification.md` (delete or mark obsolete)
 
-### Import side (read busy blocks)
+### Import side
 
-Builds on the existing `ICSCalendarProvider` in `src/weekforge/providers/calendar.py`
-(`icalendar` is already a dependency).
+**Deferred to a future iteration.** This iteration ships no calendar import. The council
+learns commitments from the form's existing **manual busy-block entry** (`BusyBlockRow`),
+which is unchanged. The existing path-based `ICSCalendarProvider` in `calendar.py` is left
+as-is (used by its own tests) but is not wired to any endpoint.
 
-- Add a `from_bytes(data: bytes)` constructor to `ICSCalendarProvider` so an **uploaded**
-  `.ics` parses in memory — no temp file. Keep the existing path-based constructor for tests.
-- v1 walks `VEVENT`s directly (single events). **RRULE is not expanded** — documented limitation.
-- **Skip events carrying the WeekForge marker** on import (property `X-WEEKFORGE`), so
-  re-uploading a previously-generated WeekForge `.ics` does not double-count our own output.
-  This preserves the spirit of the current self-pollution guard.
-- New endpoint `POST /api/calendar/import`: accepts a multipart `.ics` upload, parses busy
-  blocks for the target week window, and stores them on the **debate session** (matches the
-  anonymous, no-persistence model). Returns the parsed busy blocks for UI display.
+### Export side (generate → download)
 
-### Export side (write → download)
-
-- New `ICSCalendarWriter` (sibling of `ICSCalendarProvider` in `calendar.py`), implementing
-  the existing `CalendarWriter` protocol shape where practical. It builds a `VCALENDAR` from
-  the finalized schedule's `TimeBlock`s:
+- New `ICSCalendarWriter` (sibling of `ICSCalendarProvider` in `calendar.py`). It builds a
+  `VCALENDAR` from the user's (possibly edited) schedule `TimeBlock`s:
   - one `VEVENT` per block, each tagged `X-WEEKFORGE:1`
-  - DST-correct local times consistent with `validation.py`'s `_localize` (attach the
-    `ZoneInfo` offset; do not ask the model for offsets) and proper `VTIMEZONE` emission.
-- New endpoint `GET /api/schedule/{id}/export.ics`: streams the generated file with
-  `Content-Type: text/calendar` and a `Content-Disposition: attachment` download header.
+  - DST-correct: times are emitted as **UTC instants** (`...Z`). Block datetimes already
+    carry the DST-correct offset from `validation.py`'s `_localize`; naive wall-clock blocks
+    are anchored to the request's `time_zone` (browser IANA) before conversion. Emitting UTC
+    avoids `VTIMEZONE` complexity while remaining DST-correct in every calendar client.
+- New endpoint `POST /calendar/ics/export`: JSON body `{week_start, blocks, time_zone?}`
+  (carries the user's **edited** blocks — there is no server-persisted schedule to key on),
+  returns `Content-Type: text/calendar` with a `Content-Disposition: attachment` header.
 
 ### Data flow
 
 ```
-upload .ics ──► POST /api/calendar/import ──► ICSCalendarProvider.from_bytes
-                                                  │ (skip X-WEEKFORGE events)
-                                                  ▼
-                                         busy blocks → debate session
-                                                  │
-                              (existing debate / validation / SSE)
-                                                  ▼
-                                         finalized Schedule
-                                                  │
-download .ics ◄── GET /api/schedule/{id}/export.ics ◄── ICSCalendarWriter (tag X-WEEKFORGE:1)
+tasks + manual busy blocks (form)
+        │
+        ▼
+(existing debate / validation / SSE) ──► finalized Schedule
+        │
+   user edits blocks (client-side: handleEditTime / handleDelete)
+        │
+download .ics ◄── POST /calendar/ics/export ◄── ICSCalendarWriter (tag X-WEEKFORGE:1)
 ```
 
 ## Frontend changes
 
-- Replace Google-connect UX with a **file upload** control for the `.ics` import (drop the
-  calendar picker entirely — there's only one uploaded file).
-- `ExportButton` → **"Download .ics"**: fetch the export endpoint and trigger a blob
-  download. Remove "Add to Google Calendar" copy and the `calendar_url` result.
+- **Remove the Google login gate** in `app/app/page.tsx` so the app is reachable anonymously,
+  and delete the Google import UI (`GoogleConnect`, `CalendarPicker`, the import slot).
+- `ExportButton` → **"Download .ics"**: fetch the export blob and trigger a browser download.
+  Remove "Add to Google Calendar" copy and the `calendar_url` result. Always rendered once a
+  schedule is forged (no longer gated on `google.connected`).
 - Safety note copy updated (see below).
 - Per `frontend/AGENTS.md`: read `node_modules/next/dist/docs/` before writing frontend code.
 
@@ -122,44 +126,41 @@ The current red line — "only ever delete/ignore WeekForge's own marked events;
 the user's real events" — is **replaced by a stronger, simpler one**:
 
 > WeekForge has **no write access to any calendar**. It only ever emits a standalone `.ics`
-> file the user chooses to import. The `X-WEEKFORGE` marker survives purely as the
-> import-dedup guard so re-uploading WeekForge's own output never double-counts as busy.
+> file the user chooses to import. The `X-WEEKFORGE` marker is stamped on every generated
+> event so a future import path can skip WeekForge's own output (no double-counting busy).
 
 Update `CLAUDE.md` red lines and architecture map accordingly.
 
 ## Error handling
 
-- **Invalid / non-ICS upload:** return a 4xx with a clear message; UI shows it inline. Do
-  not crash the session.
-- **Empty calendar (no events):** valid — proceed with zero busy blocks.
-- **Malformed individual VEVENT** (missing dtstart/dtend): skip that event, continue parsing
-  the rest; surface a count of skipped events if any.
-- **Export with no finalized schedule:** 4xx, UI keeps the debate visible.
-- All-day / naive / tz-aware datetime normalization: keep the existing `_normalise` behavior
-  in `ICSCalendarProvider`.
+- **Export with empty/zero blocks:** valid — emit a calendar with no events (or the schedule
+  as-is); do not error.
+- **Naive vs tz-aware block datetimes:** naive blocks are anchored to the request `time_zone`
+  (fallback UTC) before conversion to a UTC instant; tz-aware blocks convert directly.
 
 ## Testing
 
 TDD per project convention — failing test first.
 
-- `ICSCalendarProvider.from_bytes` parses `tests/fixtures/sample_calendar.ics`; window
-  filtering and `_normalise` behavior preserved.
-- Import **skips** events tagged `X-WEEKFORGE`.
-- `ICSCalendarWriter` round-trips: write a `Schedule` → re-parse the emitted bytes → blocks
-  match, every event carries `X-WEEKFORGE:1`, DST offsets correct across a spring-forward week.
-- `POST /api/calendar/import` happy path + invalid-upload 4xx.
-- `GET /api/schedule/{id}/export.ics` returns `text/calendar` with an attachment header.
-- Frontend (vitest): upload component parses/sends the file; "Download .ics" triggers a blob
-  download; no Google-connect UI remains.
+- `ICSCalendarWriter.to_ics`: every emitted event carries `X-WEEKFORGE:1`; a naive
+  wall-clock block + `time_zone` produces the correct UTC instant (DST-correct).
+- `POST /calendar/ics/export` returns `text/calendar` with an attachment header and the
+  marker in the body.
+- `create_app` exposes `/calendar/ics/export` and **no** `/auth/google/*` routes.
+- Frontend (vitest): `exportIcs` POSTs and returns a blob; `ExportButton` triggers a download;
+  no Google-connect UI or login gate remains.
 - Delete tests tied to removed code (`test_integration_oauth.py`, `test_google_calendar.py`,
   `test_integration_calendars.py`, `test_google_routes.py`, `GoogleConnect.test.tsx`,
   `CalendarPicker.test.tsx`, `useGoogleCalendar.test.ts`).
 
-## Known limitations (v1)
+## Known limitations (this iteration)
 
-- **Recurring events are not expanded.** A weekly standup defined via RRULE will not register
-  as busy. Clean follow-up: add `recurring-ical-events` and expand RRULE within the week
-  window. Note this in `README.md`.
+- **No calendar import.** Existing commitments must be entered manually in the form; WeekForge
+  cannot read them from a calendar yet. Note this in `README.md`.
+- **Future import must handle recurrence.** When ICS upload import is built, it must expand
+  RRULE (`recurring-ical-events`, EXDATE/modified instances) — Google exports the whole
+  calendar with recurring meetings as a single master `VEVENT` + `RRULE`, so a naive
+  single-event walk would silently drop standing meetings.
 
 ## Extensibility: adding auth later
 
@@ -182,8 +183,8 @@ and the implementation plan must not hard-code "anonymous" assumptions that bloc
 
 **Implementation constraints to honor now (so auth stays additive):**
 
-1. Keep ICS import/export endpoints free of any session-ownership checks beyond `thread_id`;
-   do not bake in a hard "no identity" assumption.
+1. Keep the ICS export endpoint (and a future import endpoint) free of session-ownership
+   checks beyond `thread_id`; do not bake in a hard "no identity" assumption.
 2. Treat `thread_id` as the single persistence key; do not scatter ownership logic.
 3. Pre-existing gap (out of scope here, not introduced by this plan): `SessionManager` is an
    in-memory dict. "Remember my past weeks" will need durable per-user storage — a separate

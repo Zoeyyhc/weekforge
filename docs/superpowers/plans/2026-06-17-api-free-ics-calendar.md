@@ -1,27 +1,30 @@
-# API-free ICS Calendar I/O Implementation Plan
+# API-free ICS Calendar Export Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace WeekForge's Google Calendar API integration with anonymous, API-free `.ics` upload (import) and `.ics` download (export), removing all Google OAuth/verification.
+**Goal:** Replace WeekForge's Google Calendar API with anonymous, API-free `.ics` **export** (download); remove all Google OAuth/verification. Calendar *import* is deferred — commitments are entered via the form's existing manual busy-block rows.
 
-**Architecture:** Import is a stateless `POST` that parses uploaded `.ics` bytes into busy `TimeBlock`s; the frontend holds them and merges into the debate's `busy_blocks` on start (existing pattern). Export is a `POST` carrying the user's *edited* schedule blocks that returns a generated `.ics` file download. No Google API, no OAuth, no accounts.
+**Architecture:** Export is a `POST` carrying the user's *edited* schedule blocks that returns a generated `.ics` download. No Google API, no OAuth, no login gate. Manual busy-block entry already exists (`BusyBlockRow`) and is retained unchanged.
 
 **Tech Stack:** FastAPI, Pydantic, `icalendar` (already a dependency), Next.js 16 frontend, pytest + vitest.
 
 **Spec:** `docs/superpowers/specs/2026-06-17-api-free-ics-calendar-design.md`
 
-> **Spec refinement (intentional):** The spec sketched export as `GET /api/schedule/{id}/export.ics`. The real frontend lets the user edit blocks (`handleEditTime`/`handleDeleteBlock` in `app/app/page.tsx`) before export, and there is no server-persisted schedule keyed by id. Export is therefore `POST /calendar/ics/export` carrying the edited blocks. Import is `POST /calendar/ics/import` (multipart). Functionally identical, API-free, anonymous — honors the spec's intent.
+> **Spec refinement (intentional):** Export is `POST /calendar/ics/export` carrying the
+> user's edited blocks (they edit via `handleEditTime`/`handleDelete` before export; there is
+> no server-persisted schedule keyed by id). Calendar **import is out of scope** this
+> iteration — deferred because Google exports the whole calendar with recurring meetings as
+> RRULE masters, which requires RRULE expansion to be useful.
 
 ## Global Constraints
 
-- Python `>=3.12`; `icalendar>=5.0` is already a dependency — do **not** add new Python deps.
+- Python `>=3.12`; `icalendar>=5.0` already a dependency — do **not** add new Python deps.
 - **Remove** Python deps: `google-auth`, `google-auth-oauthlib`, `google-api-python-client`.
-- TDD: write the failing test first (project convention; see `CLAUDE.md`).
+- TDD: failing test first (project convention; see `CLAUDE.md`).
 - Frontend is **Next.js 16, NOT the version you know** — read `node_modules/next/dist/docs/` before writing any frontend code (`frontend/AGENTS.md`).
-- **Safety red line (reframed):** WeekForge has **no write access to any calendar**; it only emits a standalone `.ics`. The `X-WEEKFORGE` marker exists solely so import skips WeekForge's own past output (no double-counting busy).
-- v1 imports **single `VEVENT`s only** — recurring (RRULE) events are NOT expanded (known limitation).
+- **Safety red line (reframed):** WeekForge has **no write access to any calendar**; it only emits a standalone `.ics`. Every generated event is stamped `X-WEEKFORGE:1` so a future import path can skip WeekForge's own output.
 - Tests must never call real Google/Anthropic; inject fakes through the protocol seams.
-- Keep ICS endpoints free of session-ownership logic beyond what exists, so future auth stays additive.
+- Keep the export endpoint free of session-ownership logic, so future auth stays additive.
 - Frontend export copy: button reads **"Download .ics"**; safety note: "WeekForge builds a calendar file — your existing calendar is never touched."
 
 ---
@@ -30,12 +33,11 @@
 
 **Backend — create:**
 - `src/weekforge/providers/ics_writer.py` — `ICSCalendarWriter`: schedule blocks → `.ics` bytes.
-- `src/weekforge/api/ics_routes.py` — `create_ics_router()`: import + export endpoints.
-- `tests/providers/test_ics_writer.py`, `tests/api/test_ics_routes.py`
+- `src/weekforge/api/ics_routes.py` — `create_ics_router()`: export endpoint.
+- `tests/providers/test_ics_writer.py`, `tests/api/test_ics_routes.py`, `tests/api/test_app_wiring.py`
 
 **Backend — modify:**
-- `src/weekforge/providers/calendar.py` — add `ICSCalendarProvider.from_bytes` + `X-WEEKFORGE` skip.
-- `src/weekforge/api/app.py` — mount ICS router; drop Google router.
+- `src/weekforge/api/app.py` — mount ICS router; drop Google router + `google` param.
 - `src/weekforge/api/server.py` — drop Google integration wiring.
 - `pyproject.toml` — remove Google deps.
 - `CLAUDE.md`, `README.md`.
@@ -47,13 +49,13 @@
   `tests/test_integration_calendars.py`, `tests/api/test_google_routes.py`, `tests/auth/`.
 - `docs/google-oauth-verification.md`.
 
-**Frontend — create:**
-- `frontend/components/IcsUpload.tsx` (+ `.test.tsx`) — file picker for `.ics` import.
+> `src/weekforge/providers/calendar.py` (existing `ICSCalendarProvider`) is **left untouched** —
+> it has its own tests and is harmless unused. The import path will reuse it later.
 
 **Frontend — modify:**
-- `frontend/lib/api.ts` — replace Google functions with `importIcs` / `exportIcs`.
+- `frontend/lib/api.ts` — replace Google functions with `exportIcs`.
 - `frontend/components/ExportButton.tsx` — "Download .ics" + blob download.
-- `frontend/app/app/page.tsx` — remove login gate; wire upload/download.
+- `frontend/app/app/page.tsx` — remove login gate + Google import UI; wire `exportIcs`.
 
 **Frontend — delete:**
 - `frontend/components/GoogleConnect.tsx` (+test), `frontend/components/CalendarPicker.tsx` (+test),
@@ -61,125 +63,7 @@
 
 ---
 
-## Task 1: ICSCalendarProvider reads uploaded bytes and skips WeekForge events
-
-**Files:**
-- Modify: `src/weekforge/providers/calendar.py`
-- Test: `tests/providers/test_ics_calendar_provider.py` (create if absent)
-
-**Interfaces:**
-- Consumes: existing `ICSCalendarProvider`, `TimeBlock`.
-- Produces: `ICSCalendarProvider.from_bytes(data: bytes) -> ICSCalendarProvider`; `get_busy_blocks` skips any `VEVENT` whose `X-WEEKFORGE` property is set.
-
-- [ ] **Step 1: Write the failing test**
-
-```python
-# tests/providers/test_ics_calendar_provider.py
-from datetime import datetime, timezone
-
-from weekforge.providers.calendar import ICSCalendarProvider
-
-ICS_WITH_MARKER = b"""BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//test//EN
-BEGIN:VEVENT
-UID:real-1
-SUMMARY:Dentist
-DTSTART:20260615T090000Z
-DTEND:20260615T100000Z
-END:VEVENT
-BEGIN:VEVENT
-UID:wf-1
-SUMMARY:WeekForge: Deep work
-DTSTART:20260615T140000Z
-DTEND:20260615T160000Z
-X-WEEKFORGE:1
-END:VEVENT
-END:VCALENDAR
-"""
-
-
-def test_from_bytes_parses_real_events():
-    provider = ICSCalendarProvider.from_bytes(ICS_WITH_MARKER)
-    start = datetime(2026, 6, 15, tzinfo=timezone.utc)
-    end = datetime(2026, 6, 16, tzinfo=timezone.utc)
-    blocks = provider.get_busy_blocks(start, end)
-    labels = [b.label for b in blocks]
-    assert labels == ["Dentist"]  # the X-WEEKFORGE event is skipped
-
-
-def test_from_bytes_skips_weekforge_marked_events():
-    provider = ICSCalendarProvider.from_bytes(ICS_WITH_MARKER)
-    start = datetime(2026, 6, 15, tzinfo=timezone.utc)
-    end = datetime(2026, 6, 16, tzinfo=timezone.utc)
-    assert all("Deep work" not in b.label for b in provider.get_busy_blocks(start, end))
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `uv run pytest tests/providers/test_ics_calendar_provider.py -v`
-Expected: FAIL — `AttributeError: type object 'ICSCalendarProvider' has no attribute 'from_bytes'`
-
-- [ ] **Step 3: Implement `from_bytes` + marker skip**
-
-In `src/weekforge/providers/calendar.py`, change `ICSCalendarProvider` to hold raw bytes and add `from_bytes`, and skip marked events in `get_busy_blocks`:
-
-```python
-class ICSCalendarProvider:
-    """Reads busy blocks from iCalendar (.ics) data.
-
-    Skips events tagged with the WeekForge marker (``X-WEEKFORGE``) so a
-    re-uploaded WeekForge export is never re-counted as busy.
-    """
-
-    def __init__(self, ics_path: str | Path) -> None:
-        self._data = Path(ics_path).read_bytes()
-
-    @classmethod
-    def from_bytes(cls, data: bytes) -> "ICSCalendarProvider":
-        self = cls.__new__(cls)
-        self._data = data
-        return self
-
-    def get_busy_blocks(self, start: datetime, end: datetime) -> list[TimeBlock]:
-        calendar = _ICalendar.from_ical(self._data)
-        blocks: list[TimeBlock] = []
-        for event in calendar.walk("VEVENT"):
-            if event.get("X-WEEKFORGE") is not None:
-                continue  # WeekForge's own output — never re-count as busy
-            block = TimeBlock(
-                start=self._normalise(event.decoded("dtstart")),
-                end=self._normalise(event.decoded("dtend")),
-                label=str(event.get("summary", "Busy")),
-            )
-            if _overlaps(block, start, end):
-                blocks.append(block)
-        return blocks
-
-    @staticmethod
-    def _normalise(v: datetime | date) -> datetime:
-        if not isinstance(v, datetime):
-            return datetime(v.year, v.month, v.day, tzinfo=timezone.utc)
-        if v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
-        return v
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `uv run pytest tests/providers/test_ics_calendar_provider.py -v`
-Expected: PASS (both tests)
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/weekforge/providers/calendar.py tests/providers/test_ics_calendar_provider.py
-git commit -m "feat: ICSCalendarProvider.from_bytes + skip X-WEEKFORGE events"
-```
-
----
-
-## Task 2: ICSCalendarWriter generates a downloadable .ics
+## Task 1: ICSCalendarWriter generates a downloadable .ics
 
 **Files:**
 - Create: `src/weekforge/providers/ics_writer.py`
@@ -187,40 +71,31 @@ git commit -m "feat: ICSCalendarProvider.from_bytes + skip X-WEEKFORGE events"
 
 **Interfaces:**
 - Consumes: `TimeBlock` from `weekforge.models`.
-- Produces: `ICSCalendarWriter().to_ics(blocks: list[TimeBlock], time_zone: str | None = None) -> bytes`. Every emitted `VEVENT` carries `X-WEEKFORGE:1`; times are emitted as UTC instants (`...Z`), so import is DST-correct and round-trips through `ICSCalendarProvider`.
+- Produces: `ICSCalendarWriter().to_ics(blocks: list[TimeBlock], time_zone: str | None = None) -> bytes`. Every emitted `VEVENT` carries `X-WEEKFORGE:1`; times are emitted as UTC instants (`...Z`).
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/providers/test_ics_writer.py
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from weekforge.models import TimeBlock
-from weekforge.providers.calendar import ICSCalendarProvider
 from weekforge.providers.ics_writer import ICSCalendarWriter
 
 
-def _block(h_start, h_end, tz):
-    return TimeBlock(
-        start=datetime(2026, 6, 15, h_start, 0, tzinfo=tz),
-        end=datetime(2026, 6, 15, h_end, 0, tzinfo=tz),
+def test_to_ics_marks_every_event():
+    tz = ZoneInfo("Australia/Sydney")
+    block = TimeBlock(
+        start=datetime(2026, 6, 15, 9, 0, tzinfo=tz),
+        end=datetime(2026, 6, 15, 11, 0, tzinfo=tz),
         label="Deep work",
         task_id="t1",
     )
-
-
-def test_to_ics_marks_every_event_and_round_trips():
-    tz = ZoneInfo("Australia/Sydney")
-    data = ICSCalendarWriter().to_ics([_block(9, 11, tz)])
-    text = data.decode()
+    text = ICSCalendarWriter().to_ics([block]).decode()
     assert "BEGIN:VEVENT" in text
+    assert "SUMMARY:Deep work" in text
     assert "X-WEEKFORGE:1" in text
-    # Round-trip: a provider reading this back skips it (it is WeekForge output)
-    provider = ICSCalendarProvider.from_bytes(data)
-    window_start = datetime(2026, 6, 15, tzinfo=timezone.utc)
-    window_end = datetime(2026, 6, 16, tzinfo=timezone.utc)
-    assert provider.get_busy_blocks(window_start, window_end) == []
 
 
 def test_to_ics_localises_naive_wall_clock_with_time_zone():
@@ -231,9 +106,8 @@ def test_to_ics_localises_naive_wall_clock_with_time_zone():
         label="Deep work",
         task_id="t1",
     )
-    data = ICSCalendarWriter().to_ics([naive], time_zone="Australia/Sydney")
-    text = data.decode()
-    # Sydney is UTC+10 in June (no DST) → 09:00 local == 23:00Z prior day.
+    text = ICSCalendarWriter().to_ics([naive], time_zone="Australia/Sydney").decode()
+    # Sydney is UTC+10 in June (no DST) → 09:00 local == 23:00Z the prior day.
     assert "DTSTART:20260614T230000Z" in text
 ```
 
@@ -249,8 +123,8 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'weekforge.providers.ic
 """Generate a downloadable .ics from WeekForge's scheduled blocks.
 
 WeekForge never writes to a user's calendar — it only emits a standalone file
-the user chooses to import. Every event is tagged X-WEEKFORGE:1 so a later
-re-upload is skipped by ICSCalendarProvider and never re-counted as busy.
+the user chooses to import. Every event is tagged X-WEEKFORGE:1 so a future
+import path can skip WeekForge's own output and never re-count it as busy.
 """
 
 from __future__ import annotations
@@ -308,66 +182,30 @@ git commit -m "feat: ICSCalendarWriter emits marked, DST-correct .ics bytes"
 
 ---
 
-## Task 3: ICS API router — import + export endpoints
+## Task 2: ICS export endpoint
 
 **Files:**
 - Create: `src/weekforge/api/ics_routes.py`
 - Test: `tests/api/test_ics_routes.py`
 
 **Interfaces:**
-- Consumes: `ICSCalendarProvider.from_bytes`, `ICSCalendarWriter`, `TimeBlock`.
-- Produces: `create_ics_router() -> APIRouter` with:
-  - `POST /calendar/ics/import` — multipart form: `file` (`.ics`) + `week_start` (ISO). Returns `{"busy_blocks": [...]}`.
-  - `POST /calendar/ics/export` — JSON body `{week_start, blocks, time_zone?}`. Returns `text/calendar` attachment.
+- Consumes: `ICSCalendarWriter`, `TimeBlock`.
+- Produces: `create_ics_router() -> APIRouter` with `POST /calendar/ics/export` — JSON body `{week_start, blocks, time_zone?}`, returns a `text/calendar` attachment.
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/api/test_ics_routes.py
-from datetime import datetime, timezone
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from weekforge.api.ics_routes import create_ics_router
-
-ICS = b"""BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//t//EN
-BEGIN:VEVENT
-UID:1
-SUMMARY:Dentist
-DTSTART:20260615T090000Z
-DTEND:20260615T100000Z
-END:VEVENT
-END:VCALENDAR
-"""
 
 
 def _client() -> TestClient:
     app = FastAPI()
     app.include_router(create_ics_router())
     return TestClient(app)
-
-
-def test_import_parses_uploaded_ics():
-    res = _client().post(
-        "/calendar/ics/import",
-        data={"week_start": "2026-06-15T00:00:00"},
-        files={"file": ("cal.ics", ICS, "text/calendar")},
-    )
-    assert res.status_code == 200
-    blocks = res.json()["busy_blocks"]
-    assert [b["label"] for b in blocks] == ["Dentist"]
-
-
-def test_import_rejects_non_ics():
-    res = _client().post(
-        "/calendar/ics/import",
-        data={"week_start": "2026-06-15T00:00:00"},
-        files={"file": ("notes.txt", b"hello not a calendar", "text/plain")},
-    )
-    assert res.status_code == 400
 
 
 def test_export_returns_downloadable_calendar():
@@ -388,6 +226,15 @@ def test_export_returns_downloadable_calendar():
     assert res.headers["content-type"].startswith("text/calendar")
     assert "attachment" in res.headers["content-disposition"]
     assert "X-WEEKFORGE:1" in res.text
+
+
+def test_export_accepts_empty_blocks():
+    res = _client().post(
+        "/calendar/ics/export",
+        json={"week_start": "2026-06-15T00:00:00", "blocks": []},
+    )
+    assert res.status_code == 200
+    assert "BEGIN:VCALENDAR" in res.text
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -399,18 +246,17 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'weekforge.api.ics_rout
 
 ```python
 # src/weekforge/api/ics_routes.py
-"""API-free calendar I/O: upload an .ics to import busy blocks, download an .ics export."""
+"""API-free calendar export: download a generated .ics of the forged week."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from weekforge.models import TimeBlock
-from weekforge.providers.calendar import ICSCalendarProvider
 from weekforge.providers.ics_writer import ICSCalendarWriter
 
 
@@ -420,23 +266,8 @@ class ExportRequest(BaseModel):
     time_zone: str | None = None  # browser IANA zone for naive (wall-clock) blocks
 
 
-def _aware(dt: datetime) -> datetime:
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
 def create_ics_router() -> APIRouter:
     router = APIRouter()
-
-    @router.post("/calendar/ics/import")
-    async def ics_import(file: UploadFile = File(...), week_start: datetime = Form(...)):
-        raw = await file.read()
-        try:
-            provider = ICSCalendarProvider.from_bytes(raw)
-            start = _aware(week_start)
-            blocks = provider.get_busy_blocks(start, start + timedelta(days=7))
-        except Exception as exc:  # malformed/non-ICS upload
-            raise HTTPException(status_code=400, detail=f"Could not read .ics file: {exc}")
-        return {"busy_blocks": [b.model_dump(mode="json") for b in blocks]}
 
     @router.post("/calendar/ics/export")
     def ics_export(request: ExportRequest):
@@ -453,18 +284,18 @@ def create_ics_router() -> APIRouter:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/api/test_ics_routes.py -v`
-Expected: PASS (all three). If multipart import errors with "python-multipart not installed", it is already pulled in by FastAPI/Starlette in this project; confirm with `uv run python -c "import multipart"`.
+Expected: PASS (both)
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/weekforge/api/ics_routes.py tests/api/test_ics_routes.py
-git commit -m "feat: ICS import/export API endpoints"
+git commit -m "feat: ICS export API endpoint"
 ```
 
 ---
 
-## Task 4: Mount the ICS router; remove Google wiring from the app
+## Task 3: Mount the ICS router; remove Google wiring from the app
 
 **Files:**
 - Modify: `src/weekforge/api/app.py`, `src/weekforge/api/server.py`
@@ -485,10 +316,9 @@ class _StubCouncil:
     pass
 
 
-def test_app_exposes_ics_routes_and_no_google_routes():
+def test_app_exposes_ics_export_and_no_google_routes():
     app = create_app(council=_StubCouncil(), api_key="test", db_path="test_wiring.db")
     paths = {route.path for route in app.routes}
-    assert "/calendar/ics/import" in paths
     assert "/calendar/ics/export" in paths
     assert not any(p.startswith("/auth/google") for p in paths)
 ```
@@ -496,11 +326,11 @@ def test_app_exposes_ics_routes_and_no_google_routes():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/api/test_app_wiring.py -v`
-Expected: FAIL — `/calendar/ics/import` not in paths (and/or `google` kwarg still present).
+Expected: FAIL — `/calendar/ics/export` not in paths (and/or `google` kwarg still present).
 
 - [ ] **Step 3: Update `app.py`**
 
-Replace the Google import/mount. In `src/weekforge/api/app.py`:
+In `src/weekforge/api/app.py`:
 - Remove `from weekforge.api.google_routes import create_google_router`.
 - Add `from weekforge.api.ics_routes import create_ics_router`.
 - Remove the `google=None` parameter and its docstring line.
@@ -533,12 +363,12 @@ Expected: PASS
 
 ```bash
 git add src/weekforge/api/app.py src/weekforge/api/server.py tests/api/test_app_wiring.py
-git commit -m "feat: mount ICS router, remove Google integration wiring"
+git commit -m "feat: mount ICS export router, remove Google integration wiring"
 ```
 
 ---
 
-## Task 5: Delete all Google API/OAuth code, deps, and dead tests
+## Task 4: Delete all Google API/OAuth code, deps, and dead tests
 
 **Files:**
 - Delete: `src/weekforge/auth/`, `src/weekforge/integration.py`,
@@ -555,7 +385,7 @@ Run:
 ```bash
 grep -rnE "google_routes|integration import|weekforge\.auth|google_calendar|GoogleIntegration|RealGoogleCalendarClient" src tests | grep -v "ics_"
 ```
-Expected: no hits in `src/` or non-deleted tests. (Hits only in the files being deleted in Step 2 are fine.)
+Expected: no hits in `src/` or non-deleted tests. (Hits only in the files deleted in Step 2 are fine.)
 
 - [ ] **Step 2: Delete the modules and dead tests**
 
@@ -592,42 +422,26 @@ git commit -m "chore: remove Google Calendar API/OAuth code and dependencies"
 
 ---
 
-## Task 6: Frontend API client — importIcs / exportIcs
+## Task 5: Frontend API client — exportIcs
 
 **Files:**
 - Modify: `frontend/lib/api.ts`
 - Test: `frontend/lib/api.test.ts` (create if absent)
 
 **Interfaces:**
-- Produces:
-  - `importIcs(file: File, weekStart: string, base?): Promise<TimeBlock[]>` → POST multipart to `/calendar/ics/import`.
-  - `exportIcs(weekStart: string, blocks: TimeBlock[], timeZone?, base?): Promise<Blob>` → POST JSON to `/calendar/ics/export`, returns the `.ics` blob.
+- Produces: `exportIcs(weekStart: string, blocks: TimeBlock[], timeZone?, base?): Promise<Blob>` → POST JSON to `/calendar/ics/export`, returns the `.ics` blob.
 - Removes: `googleStatus`, `googleLoginUrl`, `googleDisconnectUrl`, `googleDisconnect`, `listCalendars`, `importBusy`, `exportSchedule`, `CalendarInfo`, `ExportResult`.
 
-- [ ] **Step 1: Read the Next.js docs note** (`frontend/AGENTS.md`) — confirm no app-router fetch caveats apply to these client-side `fetch` calls.
+- [ ] **Step 1: Read the Next.js docs note** (`frontend/AGENTS.md`) — confirm no app-router fetch caveats apply to this client-side `fetch`.
 
 - [ ] **Step 2: Write the failing test**
 
 ```ts
 // frontend/lib/api.test.ts
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { importIcs, exportIcs } from "@/lib/api";
+import { exportIcs } from "@/lib/api";
 
 afterEach(() => vi.restoreAllMocks());
-
-describe("importIcs", () => {
-  it("POSTs multipart and returns busy blocks", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ busy_blocks: [{ start: "s", end: "e", label: "Dentist", task_id: null }] }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const file = new File(["BEGIN:VCALENDAR"], "cal.ics", { type: "text/calendar" });
-    const blocks = await importIcs(file, "2026-06-15T00:00:00", "http://api");
-    expect(fetchMock).toHaveBeenCalledWith("http://api/calendar/ics/import", expect.objectContaining({ method: "POST" }));
-    expect(blocks[0].label).toBe("Dentist");
-  });
-});
 
 describe("exportIcs", () => {
   it("POSTs blocks and returns a blob", async () => {
@@ -635,7 +449,10 @@ describe("exportIcs", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob });
     vi.stubGlobal("fetch", fetchMock);
     const out = await exportIcs("2026-06-15T00:00:00", [], "Australia/Sydney", "http://api");
-    expect(fetchMock).toHaveBeenCalledWith("http://api/calendar/ics/export", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api/calendar/ics/export",
+      expect.objectContaining({ method: "POST" }),
+    );
     expect(out).toBe(blob);
   });
 });
@@ -644,27 +461,13 @@ describe("exportIcs", () => {
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `cd frontend && npx vitest run lib/api.test.ts`
-Expected: FAIL — `importIcs`/`exportIcs` are not exported.
+Expected: FAIL — `exportIcs` is not exported.
 
 - [ ] **Step 4: Rewrite the calendar section of `frontend/lib/api.ts`**
 
 Delete the `CalendarInfo`, `ExportResult` interfaces and every `google*` / `listCalendars` / `importBusy` / `exportSchedule` function. Add:
 
 ```ts
-export async function importIcs(
-  file: File,
-  weekStart: string,
-  base: string = API_BASE,
-): Promise<TimeBlock[]> {
-  const form = new FormData();
-  form.set("file", file);
-  form.set("week_start", weekStart);
-  const res = await fetch(`${base}/calendar/ics/import`, { method: "POST", body: form });
-  if (!res.ok) throw new Error(`Could not read calendar file (${res.status})`);
-  const data = await res.json();
-  return data.busy_blocks as TimeBlock[];
-}
-
 export async function exportIcs(
   weekStart: string,
   blocks: TimeBlock[],
@@ -690,106 +493,12 @@ Expected: PASS
 
 ```bash
 git add frontend/lib/api.ts frontend/lib/api.test.ts
-git commit -m "feat: frontend importIcs/exportIcs, drop Google API client"
+git commit -m "feat: frontend exportIcs, drop Google API client"
 ```
 
 ---
 
-## Task 7: IcsUpload component
-
-**Files:**
-- Create: `frontend/components/IcsUpload.tsx`, `frontend/components/IcsUpload.test.tsx`
-
-**Interfaces:**
-- Produces: `IcsUpload({ onFile, busy }: { onFile: (file: File) => void; busy: boolean })` — renders a `.ics` file input; calls `onFile` with the chosen file.
-
-- [ ] **Step 1: Write the failing test**
-
-```tsx
-// frontend/components/IcsUpload.test.tsx
-import { describe, it, expect, vi } from "vitest";
-import { render, fireEvent, screen } from "@testing-library/react";
-import { IcsUpload } from "@/components/IcsUpload";
-
-describe("IcsUpload", () => {
-  it("calls onFile with the chosen .ics", () => {
-    const onFile = vi.fn();
-    render(<IcsUpload onFile={onFile} busy={false} />);
-    const input = screen.getByTestId("ics-input") as HTMLInputElement;
-    const file = new File(["BEGIN:VCALENDAR"], "cal.ics", { type: "text/calendar" });
-    fireEvent.change(input, { target: { files: [file] } });
-    expect(onFile).toHaveBeenCalledWith(file);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd frontend && npx vitest run components/IcsUpload.test.tsx`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement the component**
-
-```tsx
-// frontend/components/IcsUpload.tsx
-"use client";
-
-import { useRef } from "react";
-
-export function IcsUpload({
-  onFile,
-  busy,
-}: {
-  onFile: (file: File) => void;
-  busy: boolean;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  return (
-    <div className="flex flex-col gap-2">
-      <input
-        ref={ref}
-        data-testid="ics-input"
-        type="file"
-        accept=".ics,text/calendar"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFile(file);
-          e.target.value = ""; // allow re-selecting the same file
-        }}
-      />
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => ref.current?.click()}
-        className="self-start rounded-lg border border-guardian/40 bg-guardian/[0.08] px-3.5 py-2 text-sm font-semibold text-guardian transition-colors hover:border-guardian/70 hover:bg-guardian/15 disabled:opacity-50"
-      >
-        {busy ? "Reading…" : "↑ Upload calendar (.ics)"}
-      </button>
-      <p className="text-xs leading-relaxed text-muted">
-        Export your calendar as an .ics file and upload it. WeekForge reads only your busy
-        times — nothing is sent to Google.
-      </p>
-    </div>
-  );
-}
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `cd frontend && npx vitest run components/IcsUpload.test.tsx`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add frontend/components/IcsUpload.tsx frontend/components/IcsUpload.test.tsx
-git commit -m "feat: IcsUpload component"
-```
-
----
-
-## Task 8: ExportButton downloads a .ics
+## Task 6: ExportButton downloads a .ics
 
 **Files:**
 - Modify: `frontend/components/ExportButton.tsx`, `frontend/components/ExportButton.test.tsx`
@@ -906,7 +615,7 @@ git commit -m "feat: ExportButton downloads a .ics file"
 
 ---
 
-## Task 9: Rewire the app page — remove login gate, wire upload/download, delete Google UI
+## Task 7: Rewire the app page — remove login gate + Google import UI, wire download
 
 **Files:**
 - Modify: `frontend/app/app/page.tsx`
@@ -915,7 +624,7 @@ git commit -m "feat: ExportButton downloads a .ics file"
   `frontend/lib/useGoogleCalendar.ts` (+`.test.ts`)
 
 **Interfaces:**
-- Consumes: `importIcs`, `exportIcs` (Task 6), `IcsUpload` (Task 7), `ExportButton` (Task 8).
+- Consumes: `exportIcs` (Task 5), `ExportButton` (Task 6). Manual busy-block entry in `TaskForm` is unchanged.
 
 - [ ] **Step 1: Read the Next.js docs** (`frontend/AGENTS.md` → `node_modules/next/dist/docs/`) for any client-component/app-router caveats before editing the page.
 
@@ -936,65 +645,38 @@ Apply these changes:
 import { useGoogleCalendar } from "@/lib/useGoogleCalendar";
 import { GoogleConnect } from "@/components/GoogleConnect";
 import { CalendarPicker } from "@/components/CalendarPicker";
+import { ImportPreview } from "@/components/ImportPreview";
 import { googleLoginUrl, exportSchedule } from "@/lib/api";
+import { BusyBlockInput, TimeBlock, StartDebateRequest } from "@/lib/types";
 ```
    and add:
 ```tsx
-import { IcsUpload } from "@/components/IcsUpload";
-import { importIcs, exportIcs } from "@/lib/api";
+import { exportIcs } from "@/lib/api";
+import { TimeBlock, StartDebateRequest } from "@/lib/types";
 ```
 
-2. **Remove** `const google = useGoogleCalendar();` (line ~36).
+2. **Remove** `const google = useGoogleCalendar();` and the Google/import state +
+   helpers that are now dead: `imported`, `importError`, `importing`, `importDone`,
+   `importRequestIdRef`, `handleImport`, the `googleSlot` JSX block, and (in
+   `handleWeekChange`) the `setImported([])` / `setImportDone(false)` / `setImportError(null)` /
+   `setImporting(false)` lines. Keep `weekStart`, `latestWeekStartRef`, and the
+   `handleWeekChange` shell (it still updates the week).
 
-3. **Replace `handleImport`** with a file-driven version:
+3. **Simplify `handleStart`** (drop the imported-block merge):
 ```tsx
-  async function handleImport(file: File) {
-    const requestWeekStart = weekStart;
-    const requestId = importRequestIdRef.current + 1;
-    importRequestIdRef.current = requestId;
-    setImporting(true);
-    setImportError(null);
-    setImportDone(false);
-    try {
-      const blocks = await importIcs(file, toLocalMidnightISO(requestWeekStart));
-      if (
-        importRequestIdRef.current === requestId &&
-        latestWeekStartRef.current === requestWeekStart
-      ) {
-        setImported(blocks);
-        setImportDone(true);
-      }
-    } catch (err) {
-      if (
-        importRequestIdRef.current === requestId &&
-        latestWeekStartRef.current === requestWeekStart
-      ) {
-        setImportError(err instanceof Error ? err.message : "Could not read the calendar file.");
-      }
-    } finally {
-      if (importRequestIdRef.current === requestId) setImporting(false);
-    }
+  function handleStart(req: StartDebateRequest) {
+    start({ ...req, week_start: weekStart });
   }
 ```
 
-4. **Replace the `googleSlot` JSX** with an upload slot:
+4. **Replace the `googleSlot` prop** passed to `TaskForm`. The form's `googleSlot` is an
+   optional `ReactNode`; pass `undefined` (or remove the prop):
 ```tsx
-  const importSlot = (
-    <div className="flex flex-col gap-3 rounded-xl border border-[#272430] bg-gradient-to-b from-[#15171f] to-[#101219] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <IcsUpload onFile={handleImport} busy={importing} />
-      {importError && (
-        <p className="text-sm text-rose-300" data-testid="import-error">{importError}</p>
-      )}
-      {importDone && imported.length === 0 && !importError && (
-        <p className="text-sm text-muted" data-testid="import-empty">
-          No events found for the week of {weekStart}.
-        </p>
-      )}
-      {imported.length > 0 && (
-        <ImportPreview blocks={imported} onRemove={(i) => setImported((p) => p.filter((_, j) => j !== i))} />
-      )}
-    </div>
-  );
+        <TaskForm
+          onStart={handleStart}
+          weekStart={weekStart}
+          onWeekChange={handleWeekChange}
+        />
 ```
 
 5. **Remove the login gate** — delete the entire block:
@@ -1006,9 +688,7 @@ import { importIcs, exportIcs } from "@/lib/api";
   }
 ```
 
-6. **Pass `importSlot`** to `TaskForm` (rename the prop usage): change `googleSlot={googleSlot}` to `googleSlot={importSlot}` (keep the `TaskForm` prop name unless you also rename it in `TaskForm.tsx`).
-
-7. **ExportButton** — make it always render (drop `google.connected &&`) and use `exportIcs`:
+6. **ExportButton** — make it always render (drop `google.connected &&`) and use `exportIcs`:
 ```tsx
                 <ExportButton
                   onExport={() => exportIcs(toLocalMidnightISO(weekStart), editedBlocks)}
@@ -1021,18 +701,20 @@ Run:
 ```bash
 cd frontend && npx vitest run && npm run build
 ```
-Expected: PASS — no references to `useGoogleCalendar`, `GoogleConnect`, `CalendarPicker`, `googleLoginUrl`, or `exportSchedule` remain. If `TaskForm` types `googleSlot`, it still accepts a `ReactNode` — no change needed.
+Expected: PASS — no references to `useGoogleCalendar`, `GoogleConnect`, `CalendarPicker`,
+`ImportPreview`, `googleLoginUrl`, `exportSchedule`, or `BusyBlockInput` remain. `TaskForm`'s
+`googleSlot` prop is optional, so omitting it typechecks.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: anonymous .ics upload/download flow, remove Google login gate"
+git commit -m "feat: anonymous export-only flow, remove Google login gate and import UI"
 ```
 
 ---
 
-## Task 10: Docs — red lines, env vars, README limitation, obsolete verification doc
+## Task 8: Docs — red lines, env vars, README, obsolete verification doc
 
 **Files:**
 - Modify: `CLAUDE.md`, `README.md`
@@ -1042,25 +724,30 @@ git commit -m "feat: anonymous .ics upload/download flow, remove Google login ga
 
 - [ ] **Step 1: Update `CLAUDE.md`**
 
-- In **Architecture map**: replace the `google_calendar.py`, `integration.py`, `auth/`, and `google_routes.py` bullets with:
-  - `src/weekforge/providers/calendar.py` — `CalendarProvider` protocol + `ICSCalendarProvider` (reads uploaded `.ics`, skips `X-WEEKFORGE` events).
+- In **Architecture map**: replace the `google_calendar.py`, `integration.py`, `auth/`, and
+  `google_routes.py` bullets with:
   - `src/weekforge/providers/ics_writer.py` — `ICSCalendarWriter` (schedule → downloadable `.ics`, tags `X-WEEKFORGE:1`).
-  - `src/weekforge/api/ics_routes.py` — `POST /calendar/ics/import`, `POST /calendar/ics/export`.
+  - `src/weekforge/api/ics_routes.py` — `POST /calendar/ics/export`.
+  - Keep the `calendar.py` bullet (its `ICSCalendarProvider` stays, unused, for the future import path).
 - Replace the **"Calendar data safety"** red line with:
-  > **Calendar data safety (the core invariant):** WeekForge has **no write access to any calendar**. It only ever emits a standalone `.ics` file the user chooses to import. Every generated event carries `extendedProperties`-style marker `X-WEEKFORGE:1`; **import skips `X-WEEKFORGE` events** so WeekForge never re-counts its own output as busy. Never remove the marker or the import-skip.
-- Remove the **"Import skips marked events"** bullet's Google-specific wording (now covered above).
-- In **Environment variables**: delete the `GOOGLE_OAUTH_*`, `GOOGLE_TOKEN_PATH`, and `WEEKFORGE_FRONTEND_URL` (OAuth-redirect) rows that only served OAuth. Keep `WEEKFORGE_FRONTEND_URL` only if still used for CORS (it is — keep it, drop the OAuth mention).
+  > **Calendar data safety (the core invariant):** WeekForge has **no write access to any
+  > calendar**. It only ever emits a standalone `.ics` file the user chooses to import. Every
+  > generated event is stamped `X-WEEKFORGE:1` so a future import path can skip WeekForge's own
+  > output. Never remove the marker.
+- Remove the **"Import skips marked events"** red-line bullet (no import this iteration).
+- In **Environment variables**: delete the `GOOGLE_OAUTH_*` and `GOOGLE_TOKEN_PATH` rows.
+  Keep `WEEKFORGE_FRONTEND_URL` (still used for CORS) but drop any OAuth-redirect mention.
 
-- [ ] **Step 2: Add the known limitation to `README.md`**
+- [ ] **Step 2: Update `README.md`**
 
-Add under a "Limitations" or "Calendar" section:
+Add under a "Calendar" / "Limitations" section:
 ```markdown
-- **Calendar sync is file-based.** Import by uploading an `.ics` export of your calendar;
-  export downloads an `.ics` you import back. WeekForge never connects to Google — no
-  account, no OAuth.
-- **Recurring events (RRULE) are not yet expanded on import** — a weekly meeting defined
-  as a recurrence won't register as busy. Add single events for now.
+- **Export is file-based and API-free.** WeekForge generates an `.ics` you download and
+  import into any calendar (Google / Apple / Outlook). No Google account, no OAuth.
+- **No calendar import yet.** Enter your existing commitments as busy blocks in the form;
+  WeekForge cannot read them from a calendar in this version.
 ```
+Remove any README copy describing Google Calendar connect/import/export.
 
 - [ ] **Step 3: Delete the obsolete verification doc**
 
@@ -1080,13 +767,18 @@ Expected: all green.
 
 ```bash
 git add -A
-git commit -m "docs: reframe calendar safety red line, drop OAuth docs/env, note RRULE limit"
+git commit -m "docs: reframe calendar safety red line, drop OAuth docs/env"
 ```
 
 ---
 
 ## Self-Review notes
 
-- **Spec coverage:** import (Tasks 1,3,6,7,9) ✓; export (Tasks 2,3,6,8,9) ✓; remove Google code/deps (Tasks 4,5) ✓; anonymous/no-login (Task 9 removes the gate) ✓; reframed safety red line (Task 10) ✓; RRULE known-limitation (Tasks 1,10) ✓; extensibility/no-ownership-baked-in (endpoints carry no identity — Task 3) ✓.
-- **Endpoint deviation from spec** (POST export carrying edited blocks vs `GET /schedule/{id}`) is documented at the top and is required by the client-side edit flow.
-- **Type consistency:** `importIcs`/`exportIcs` (Task 6) match their usage in Task 9; `to_ics(blocks, time_zone)` (Task 2) matches the router call (Task 3); `from_bytes` (Task 1) matches router + writer test usage.
+- **Spec coverage:** export (Tasks 1,2,5,6,7) ✓; remove Google code/deps (Tasks 3,4) ✓;
+  anonymous/no-login (Task 7 removes the gate) ✓; reframed safety red line (Task 8) ✓;
+  import deferred (no import tasks; manual entry retained) ✓; extensibility/no-ownership-baked-in
+  (export endpoint carries no identity — Task 2) ✓.
+- **Endpoint deviation from spec** (POST export carrying edited blocks vs `GET /schedule/{id}`)
+  documented at top; required by the client-side edit flow.
+- **Type consistency:** `exportIcs` (Task 5) matches its usage in Task 7; `to_ics(blocks, time_zone)`
+  (Task 1) matches the router call (Task 2). No `from_bytes`/import symbols remain.
