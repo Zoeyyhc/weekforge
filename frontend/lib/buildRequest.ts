@@ -24,6 +24,7 @@ export interface PrefsDraft {
   workdayStartHour: string;
   workdayEndHour: string;
   maxFocusMinutes: string;
+  timezone?: string | null;
 }
 
 const WEEKDAY_INDEX: Record<Weekday, number> = {
@@ -71,7 +72,7 @@ export function buildRequest(
       workday_start_hour: Number(prefs.workdayStartHour),
       workday_end_hour: Number(prefs.workdayEndHour),
       max_focus_minutes_per_day: Number(prefs.maxFocusMinutes),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone: prefs.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     max_rounds: 3,
     require_human_on_stall: true,

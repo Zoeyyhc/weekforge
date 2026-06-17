@@ -62,6 +62,17 @@ describe("buildRequest", () => {
     });
   });
 
+  it("preserves a saved timezone when one is supplied in preferences", () => {
+    const req = buildRequest(
+      tasks,
+      blocks,
+      { ...prefs, timezone: "Pacific/Auckland" },
+      weekStart,
+    );
+
+    expect(req.preferences.timezone).toBe("Pacific/Auckland");
+  });
+
   it("always sends the fixed council defaults", () => {
     const req = buildRequest(tasks, blocks, prefs, weekStart);
     expect(req.max_rounds).toBe(3);

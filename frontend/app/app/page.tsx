@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/authContext";
+import { fetchMe, savePreferences, type SavedPreferences } from "@/lib/auth";
+import type { PrefsDraft } from "@/lib/buildRequest";
 import { defaultWeekMonday, toISODate, toLocalMidnightISO } from "@/lib/weekWindow";
 import { useDebateStream } from "@/lib/useDebateStream";
 import { useFreshActivity } from "@/lib/useFreshActivity";
@@ -32,8 +34,10 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
 
 export default function Home() {
   const router = useRouter();
-  const { user, status, signOut } = useAuth();
+  const { token, user, status, signOut } = useAuth();
   const { state, maxRounds, start, intervene, reset } = useDebateStream();
+  const [initialPrefs, setInitialPrefs] = useState<PrefsDraft | undefined>(undefined);
+  const [prefsReady, setPrefsReady] = useState(false);
   const [weekStart, setWeekStart] = useState(() =>
     toISODate(defaultWeekMonday(new Date(), 18)),
   );
@@ -43,6 +47,42 @@ export default function Home() {
   useEffect(() => {
     if (status === "anon") router.push("/login");
   }, [status, router]);
+
+  useEffect(() => {
+    if (status !== "authed") {
+      setInitialPrefs(undefined);
+      setPrefsReady(false);
+      return;
+    }
+    setInitialPrefs(undefined);
+    if (!token) {
+      setPrefsReady(true);
+      return;
+    }
+    let cancelled = false;
+    setPrefsReady(false);
+    fetchMe(token)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.preferences) {
+          setInitialPrefs(undefined);
+          return;
+        }
+        setInitialPrefs({
+          workdayStartHour: String(res.preferences.workday_start_hour),
+          workdayEndHour: String(res.preferences.workday_end_hour),
+          maxFocusMinutes: String(res.preferences.max_focus_minutes_per_day),
+          timezone: res.preferences.timezone,
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPrefsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, token]);
 
   // Celebrate the verdict exactly once per debate. Fires when the stream lands
   // on "done"; the flag resets when the user starts over (status → idle).
@@ -112,6 +152,16 @@ export default function Home() {
   }
 
   function handleStart(req: StartDebateRequest) {
+    if (token && req.preferences) {
+      const p = req.preferences;
+      const prefs: SavedPreferences = {
+        workday_start_hour: p.workday_start_hour ?? 9,
+        workday_end_hour: p.workday_end_hour ?? 18,
+        max_focus_minutes_per_day: p.max_focus_minutes_per_day ?? 360,
+        timezone: p.timezone ?? null,
+      };
+      void savePreferences(token, prefs).catch(() => {});
+    }
     start({ ...req, week_start: weekStart });
   }
 
@@ -146,9 +196,10 @@ export default function Home() {
         </div>
       </header>
 
-      {showForm && (
+      {showForm && prefsReady && (
         <TaskForm
           onStart={handleStart}
+          initialPrefs={initialPrefs}
           weekStart={weekStart}
           onWeekChange={handleWeekChange}
         />

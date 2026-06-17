@@ -153,18 +153,20 @@ export function TaskForm({
   onStart,
   disabled,
   googleSlot,
+  initialPrefs,
   weekStart,
   onWeekChange,
 }: {
   onStart: (req: StartDebateRequest) => void;
   disabled?: boolean;
   googleSlot?: React.ReactNode;
+  initialPrefs?: PrefsDraft;
   weekStart: string;
   onWeekChange: (mondayISO: string) => void;
 }) {
   const [tasks, setTasks] = useState<TaskDraft[]>(SEED_TASKS);
   const [blocks, setBlocks] = useState<BusyBlockDraft[]>(SEED_BLOCKS);
-  const [prefs, setPrefs] = useState<PrefsDraft>(SEED_PREFS);
+  const [prefs, setPrefs] = useState<PrefsDraft>(initialPrefs ?? SEED_PREFS);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const workdayEnd = Number(prefs.workdayEndHour) || 18;

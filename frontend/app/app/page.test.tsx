@@ -8,6 +8,8 @@ const interveneSpy = vi.fn();
 const resetSpy = vi.fn();
 const signOutSpy = vi.fn();
 const push = vi.fn();
+const fetchMeSpy = vi.fn();
+const savePreferencesSpy = vi.fn();
 
 vi.mock("@/lib/useDebateStream", () => ({
   useDebateStream: () => mockUseDebateStream(),
@@ -19,6 +21,19 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  fetchMe: (token: string) => fetchMeSpy(token),
+  savePreferences: (
+    token: string,
+    prefs: {
+      workday_start_hour: number;
+      workday_end_hour: number;
+      max_focus_minutes_per_day: number;
+      timezone: string | null;
+    },
+  ) => savePreferencesSpy(token, prefs),
 }));
 
 vi.mock("@/lib/useFreshActivity", () => ({
@@ -34,17 +49,51 @@ vi.mock("@/components/TaskForm", () => ({
     weekStart,
     onWeekChange,
     onStart,
+    initialPrefs,
   }: {
     weekStart: string;
     onWeekChange: (week: string) => void;
-    onStart: (req: { tasks: never[]; busy_blocks: never[] }) => void;
+    onStart: (req: {
+      tasks: never[];
+      busy_blocks: never[];
+      preferences?: {
+        workday_start_hour: number;
+        workday_end_hour: number;
+        max_focus_minutes_per_day: number;
+        timezone: string | null;
+      };
+    }) => void;
+    initialPrefs?: {
+      workdayStartHour: string;
+      workdayEndHour: string;
+      maxFocusMinutes: string;
+      timezone?: string | null;
+    };
   }) => (
     <div data-testid="task-form">
       <div data-testid="selected-week">{weekStart}</div>
+      <div data-testid="initial-pref-start">{initialPrefs?.workdayStartHour ?? "none"}</div>
+      <div data-testid="initial-pref-end">{initialPrefs?.workdayEndHour ?? "none"}</div>
+      <div data-testid="initial-pref-focus">{initialPrefs?.maxFocusMinutes ?? "none"}</div>
+      <div data-testid="initial-pref-timezone">{initialPrefs?.timezone ?? "none"}</div>
       <button type="button" onClick={() => onWeekChange("2026-06-22")}>
         Pick next week
       </button>
-      <button type="button" onClick={() => onStart({ tasks: [], busy_blocks: [] })}>
+      <button
+        type="button"
+        onClick={() =>
+          onStart({
+            tasks: [],
+            busy_blocks: [],
+            preferences: {
+              workday_start_hour: 8,
+              workday_end_hour: 16,
+              max_focus_minutes_per_day: 240,
+              timezone: "Australia/Melbourne",
+            },
+          })
+        }
+      >
         Start debate
       </button>
     </div>
@@ -80,6 +129,7 @@ beforeEach(() => {
     reset: resetSpy,
   });
   mockUseAuth.mockReturnValue({
+    token: null,
     user: { id: "u1", email: "a@b.com", display_name: "Ada" },
     status: "authed",
     signOut: signOutSpy,
@@ -93,6 +143,7 @@ afterEach(() => {
 describe("Home page", () => {
   it("redirects to /login when unauthenticated", async () => {
     mockUseAuth.mockReturnValue({
+      token: null,
       user: null,
       status: "anon",
       signOut: vi.fn(),
@@ -155,6 +206,105 @@ describe("Home page", () => {
         busy_blocks: [],
       }),
     );
+  });
+
+  it("loads saved rhythm preferences and passes them to TaskForm", async () => {
+    mockUseAuth.mockReturnValue({
+      token: "tok-1",
+      user: { id: "u1", email: "a@b.com", display_name: "Ada" },
+      status: "authed",
+      signOut: signOutSpy,
+    });
+    fetchMeSpy.mockResolvedValue({
+      user: { id: "u1", email: "a@b.com", display_name: "Ada" },
+      preferences: {
+        workday_start_hour: 7,
+        workday_end_hour: 15,
+        max_focus_minutes_per_day: 240,
+        timezone: "Australia/Melbourne",
+      },
+    });
+    const Home = await loadHome();
+
+    render(<Home />);
+
+    await waitFor(() => expect(fetchMeSpy).toHaveBeenCalledWith("tok-1"));
+    expect(await screen.findByTestId("initial-pref-start")).toHaveTextContent("7");
+    expect(screen.getByTestId("initial-pref-end")).toHaveTextContent("15");
+    expect(screen.getByTestId("initial-pref-focus")).toHaveTextContent("240");
+    expect(screen.getByTestId("initial-pref-timezone")).toHaveTextContent(
+      "Australia/Melbourne",
+    );
+  });
+
+  it("clears saved rhythm when the current account has no preferences", async () => {
+    let authState = {
+      token: "tok-1",
+      user: { id: "u1", email: "a@b.com", display_name: "Ada" },
+      status: "authed",
+      signOut: signOutSpy,
+    };
+    mockUseAuth.mockImplementation(() => authState);
+    fetchMeSpy
+      .mockResolvedValueOnce({
+        user: { id: "u1", email: "a@b.com", display_name: "Ada" },
+        preferences: {
+          workday_start_hour: 7,
+          workday_end_hour: 15,
+          max_focus_minutes_per_day: 240,
+          timezone: "Australia/Melbourne",
+        },
+      })
+      .mockResolvedValueOnce({
+        user: { id: "u2", email: "b@c.com", display_name: "Bea" },
+        preferences: null,
+      });
+    const Home = await loadHome();
+    const { rerender } = render(<Home />);
+
+    expect(await screen.findByTestId("initial-pref-start")).toHaveTextContent("7");
+
+    authState = {
+      token: "tok-2",
+      user: { id: "u2", email: "b@c.com", display_name: "Bea" },
+      status: "authed",
+      signOut: signOutSpy,
+    };
+    rerender(<Home />);
+
+    await waitFor(() => expect(fetchMeSpy).toHaveBeenCalledWith("tok-2"));
+    expect(await screen.findByTestId("initial-pref-start")).toHaveTextContent("none");
+  });
+
+  it("saves rhythm preferences with timezone when debate starts", async () => {
+    mockUseAuth.mockReturnValue({
+      token: "tok-1",
+      user: { id: "u1", email: "a@b.com", display_name: "Ada" },
+      status: "authed",
+      signOut: signOutSpy,
+    });
+    fetchMeSpy.mockResolvedValue({
+      user: { id: "u1", email: "a@b.com", display_name: "Ada" },
+      preferences: null,
+    });
+    savePreferencesSpy.mockResolvedValue({
+      workday_start_hour: 8,
+      workday_end_hour: 16,
+      max_focus_minutes_per_day: 240,
+      timezone: "Australia/Melbourne",
+    });
+    const Home = await loadHome();
+
+    render(<Home />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /start debate/i }));
+
+    expect(savePreferencesSpy).toHaveBeenCalledWith("tok-1", {
+      workday_start_hour: 8,
+      workday_end_hour: 16,
+      max_focus_minutes_per_day: 240,
+      timezone: "Australia/Melbourne",
+    });
   });
 
   it("pops the Herald modal when the debate interrupts for a vote", async () => {
