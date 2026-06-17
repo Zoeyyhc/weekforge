@@ -36,7 +36,7 @@ def main() -> None:
     import uvicorn
 
     host = os.environ.get("WEEKFORGE_HOST", "127.0.0.1")
-    port = int(os.environ.get("WEEKFORGE_PORT") or os.environ.get("PORT", "8000"))
+    port = int(os.environ.get("WEEKFORGE_PORT") or os.environ.get("PORT", "8001"))
     uvicorn.run(build_app(), host=host, port=port)
 
 

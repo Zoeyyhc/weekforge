@@ -6,7 +6,7 @@ Transparent multi-agent decision council that plans the user's week. CrewAI deba
 
 ```bash
 # Backend (Python 3.12+, uv-managed)
-uv run weekforge-api          # serve FastAPI on $WEEKFORGE_HOST:$WEEKFORGE_PORT (default 127.0.0.1:8000)
+uv run weekforge-api          # serve FastAPI on $WEEKFORGE_HOST:$WEEKFORGE_PORT (default 127.0.0.1:8001)
 uv run pytest                 # run the test suite (pythonpath=src, testpaths=tests)
 uv run pytest tests/debate    # a subset
 
@@ -37,7 +37,7 @@ cd frontend && npm test       # vitest run
 
 - Tests inject `MockCouncil` through the protocol seams; never call real Anthropic in unit tests (mock `weekforge.debate.nodes.Anthropic`).
 - Anthropic/Claude calls: when touching them, consult the `claude-api` skill for current model IDs (don't hardcode from memory).
-- Secrets (`weekforge_tokens.json`, `*.db`) are git-ignored — never commit them. Config is all via env vars.
+- Secrets (`*.db`) are git-ignored — never commit them. Config is all via env vars.
 
 ## Environment variables
 
@@ -48,4 +48,4 @@ cd frontend && npm test       # vitest run
 | `WEEKFORGE_ARBITER_MODEL` | Arbiter-only model; falls back to `WEEKFORGE_MODEL` when unset (recommend a stronger model, e.g. Sonnet, to reduce validation retries) |
 | `WEEKFORGE_DB_PATH` | SQLite checkpointer / session DB path |
 | `WEEKFORGE_FRONTEND_URL` | Frontend origin for CORS (default `http://localhost:3000`) |
-| `WEEKFORGE_HOST` / `WEEKFORGE_PORT` | API bind (default `127.0.0.1` / `8000`) |
+| `WEEKFORGE_HOST` / `WEEKFORGE_PORT` | API bind (default `127.0.0.1` / `8001`) |

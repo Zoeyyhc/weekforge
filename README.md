@@ -84,7 +84,7 @@ export WEEKFORGE_ARBITER_MODEL=anthropic/claude-sonnet-...   # falls back to WEE
 **Run it:**
 
 ```bash
-# Backend  →  http://127.0.0.1:8000
+# Backend  →  http://127.0.0.1:8001
 uv run weekforge-api
 
 # Frontend →  http://localhost:3000
