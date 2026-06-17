@@ -237,6 +237,28 @@ body {
   }
 }
 
+/* The Herald: resting molten halo on the clarion sigil. Brighter than the
+   brand mark's glow — the Herald takes the stage to proclaim the verdict. */
+.herald-sigil {
+  filter: drop-shadow(0 0 9px rgba(255, 107, 53, 0.55))
+    drop-shadow(0 0 3px rgba(245, 166, 35, 0.6));
+}
+
+/* One-time "sounding" as the Herald's modal rises before the vote: the
+   clarion lifts and its halo swells, like a note being blown. */
+@keyframes herald-sound {
+  0% { opacity: 0; transform: translateY(8px) rotate(-5deg) scale(0.9); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) rotate(0) scale(1); }
+}
+.animate-herald-sound {
+  animation: herald-sound 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-herald-sound { animation: none; }
+}
+
 /* Landing: rising ember particles. */
 @keyframes ember-rise {
   0% { opacity: 0; transform: translateY(0) scale(0.6); }

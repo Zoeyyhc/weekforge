@@ -104,4 +104,29 @@ describe("Home page", () => {
       }),
     );
   });
+
+  it("pops the Herald modal when the debate interrupts for a vote", () => {
+    mockUseDebateStream.mockReturnValue({
+      state: {
+        status: "interrupted",
+        events: [],
+        schedule: null,
+        error: null,
+        interrupt: {
+          type: "interrupt",
+          interrupt_reason: "The council stalled after 3 rounds.",
+          proposals: { DeadlineHawk: "Front-load the deadline. Pack Monday." },
+          thread_id: "t1",
+        },
+      },
+      maxRounds: 3,
+      start: startSpy,
+      intervene: interveneSpy,
+      reset: resetSpy,
+    });
+
+    render(<Home />);
+
+    expect(screen.getByText("The Herald")).toBeInTheDocument();
+  });
 });

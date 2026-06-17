@@ -26,6 +26,9 @@ export interface InterruptMsg {
   type: "interrupt";
   interrupt_reason: string;
   proposals: Record<string, string>;
+  // The Herald's one-line distillation per champion. Absent when the Herald
+  // could not summarise; the modal then falls back to the proposal's first line.
+  proposal_summaries?: Record<string, string>;
   thread_id: string;
 }
 

@@ -15,6 +15,7 @@ from weekforge.debate.nodes import (
     make_check_convergence_node,
     make_critique_node,
     make_gather_proposals_node,
+    make_herald_node,
     make_validate_node,
 )
 from weekforge.debate.state import DebateState
@@ -24,7 +25,8 @@ def _route_after_convergence_check(state: DebateState) -> str:
     if state["converged"]:
         return "arbitrate"
     if state.get("interrupt_reason"):
-        return "human_interrupt"
+        # The Herald summarises the divided council, then the vote pauses.
+        return "herald"
     # Stalled but no human required (require_human_on_stall=False): the Arbiter
     # decides now. Without this the debate would loop gather→critique→gather
     # forever, since round_number stays >= max_rounds and never converges.
@@ -62,12 +64,14 @@ def build_graph(council: Council, api_key: str, db_path: str = "weekforge.db", r
     check_convergence = make_check_convergence_node(api_key, require_human_on_stall)
     arbitrate = make_arbitrate_node(council)
     validate = make_validate_node(api_key)
+    herald = make_herald_node(api_key)
 
     builder = StateGraph(DebateState)
 
     builder.add_node("gather_proposals", gather_proposals)
     builder.add_node("critique", critique)
     builder.add_node("check_convergence", check_convergence)
+    builder.add_node("herald", herald)
     builder.add_node("human_interrupt", human_interrupt_node)
     builder.add_node("arbitrate", arbitrate)
     builder.add_node("validate", validate)
@@ -81,10 +85,12 @@ def build_graph(council: Council, api_key: str, db_path: str = "weekforge.db", r
         _route_after_convergence_check,
         {
             "arbitrate": "arbitrate",
-            "human_interrupt": "human_interrupt",
+            "herald": "herald",
             "gather_proposals": "gather_proposals",
         },
     )
+    # The Herald only summarises; it hands straight off to the human's vote.
+    builder.add_edge("herald", "human_interrupt")
     # After a human intervenes, the Arbiter decides immediately — no more
     # debate rounds. This guarantees an exit: a stalled council pauses once
     # for human input, then the human's guidance drives a final arbitration.
