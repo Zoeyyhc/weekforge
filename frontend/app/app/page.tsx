@@ -74,14 +74,19 @@ export default function Home() {
     }
   }, [state.status, state.schedule]);
 
-  useEffect(() => {
-    latestWeekStartRef.current = weekStart;
+  function handleWeekChange(nextWeekStart: string) {
+    if (nextWeekStart === latestWeekStartRef.current) {
+      return;
+    }
+
+    latestWeekStartRef.current = nextWeekStart;
     importRequestIdRef.current += 1;
     setImported([]);
     setImportDone(false);
     setImportError(null);
     setImporting(false);
-  }, [weekStart]);
+    setWeekStart(nextWeekStart);
+  }
 
   function handleEditTime(blockIndex: number, field: "start" | "end", timeStr: string) {
     setEditedBlocks((prev) =>
@@ -237,7 +242,7 @@ export default function Home() {
           onStart={handleStart}
           googleSlot={googleSlot}
           weekStart={weekStart}
-          onWeekChange={setWeekStart}
+          onWeekChange={handleWeekChange}
         />
       )}
 
