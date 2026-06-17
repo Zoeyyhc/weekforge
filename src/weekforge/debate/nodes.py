@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -216,6 +217,74 @@ def make_check_convergence_node(api_key: str, require_human_on_stall: bool = Tru
     return check_convergence
 
 
+def _first_sentence(text: str) -> str:
+    """The opening sentence of a proposal — the Herald's degraded fallback line.
+
+    Mirrors the frontend's `splitProposal` lead so a model failure reads the same
+    as the presentational default.
+    """
+    trimmed = text.strip()
+    match = re.match(r"^.*?[.!?](\s|$)", trimmed)
+    if match and len(match.group(0).strip()) < len(trimmed):
+        return match.group(0).strip()
+    return trimmed
+
+
+def make_herald_node(api_key: str):
+    """Return a node where the Herald distils each champion's proposal to one line.
+
+    The Herald is a *neutral summariser*: it never ranks, recommends, or invents
+    consensus (that would anchor the human's vote and collide with the Arbiter).
+    It runs only on the stall/interrupt path, so a converged debate never pays for
+    it. Output is best-effort — a missing or malformed model reply degrades to each
+    proposal's opening sentence so the vote is never blocked.
+    """
+    client = Anthropic(api_key=api_key)
+
+    def herald(state: DebateState) -> dict:
+        proposals = state.get("proposals") or {}
+        if not proposals:
+            return {"proposal_summaries": {}}
+
+        fallback = {name: _first_sentence(text) for name, text in proposals.items()}
+        proposals_text = "\n\n".join(f"{name}: {text}" for name, text in proposals.items())
+        prompt = (
+            "You are the Herald: a neutral summariser for a council of scheduling "
+            "champions. Distil each champion's proposal below into exactly one sentence "
+            "(a short declarative line, ~12 words max) that captures their stance.\n"
+            "RULES: Do NOT recommend, rank, judge, or pick a winner. Do NOT invent "
+            "agreement between champions. Give every champion equal weight. Summarise "
+            "only what their proposal actually says.\n\n"
+            f"Champions:\n{proposals_text}\n\n"
+            'Output ONLY a raw JSON object of the form {"summaries": {"<ChampionName>": '
+            '"<one sentence>", ...}} with exactly these keys: '
+            f"{list(proposals.keys())}. No markdown."
+        )
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = response.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = "\n".join(raw.split("\n")[1:-1])
+            model_summaries = json.loads(raw)["summaries"]
+            summaries = {}
+            for name in proposals:
+                line = model_summaries.get(name) if isinstance(model_summaries, dict) else None
+                summaries[name] = (
+                    line.strip() if isinstance(line, str) and line.strip() else fallback[name]
+                )
+        except Exception as exc:
+            logger.warning("Herald summary failed (%s); using first-sentence fallback.", exc)
+            summaries = fallback
+
+        return {"proposal_summaries": summaries}
+
+    return herald
+
+
 def human_interrupt_node(state: DebateState) -> dict:
     """Pause the graph and wait for human input via LangGraph's interrupt mechanism."""
     from langgraph.types import interrupt
@@ -224,6 +293,7 @@ def human_interrupt_node(state: DebateState) -> dict:
         "type": "needs_human_input",
         "interrupt_reason": state["interrupt_reason"],
         "proposals": state["proposals"],
+        "proposal_summaries": state.get("proposal_summaries", {}),
         "round": state["round_number"],
     })
     event = {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ from weekforge.debate.nodes import (
     make_arbitrate_node,
     make_critique_node,
     make_gather_proposals_node,
+    make_herald_node,
     make_validate_node,
     human_interrupt_node,
 )
@@ -520,6 +522,142 @@ def test_validate_parse_fail_increments_attempts_without_best_effort(base_state,
     assert result["validation_attempts"] == 3
     # Parse failure must NOT overwrite a previously-captured best-effort schedule.
     assert "best_effort_schedule" not in result
+
+
+# ── herald ──────────────────────────────────────────────────────────────────
+
+# Three competing proposals the Herald must distil — one neutral line each.
+_HERALD_PROPOSALS = {
+    "DeadlineHawk": (
+        "Front-load deep work Monday and Tuesday to clear the deadline. "
+        "Block 9 to 12 both mornings."
+    ),
+    "EnergyGuardian": (
+        "Spread the work across the week with recovery gaps. "
+        "No more than three focus hours a day."
+    ),
+    "FocusBatcher": (
+        "Batch all writing into two long Wednesday blocks. Keep meetings on Thursday."
+    ),
+}
+
+
+def _herald_state(base_state):
+    return {**base_state, "proposals": _HERALD_PROPOSALS, "round_number": 3}
+
+
+def _patch_herald_anthropic(text=None, side_effect=None):
+    """Build a patched Anthropic whose messages.create returns `text` (or runs side_effect)."""
+    MockAnthropic = patch("weekforge.debate.nodes.Anthropic")
+    mock_anthropic = MockAnthropic.start()
+    mock_client = MagicMock()
+    mock_anthropic.return_value = mock_client
+    if side_effect is not None:
+        mock_client.messages.create.side_effect = side_effect
+    else:
+        mock_response = MagicMock()
+        mock_response.content[0].text = text
+        mock_client.messages.create.return_value = mock_response
+    return MockAnthropic
+
+
+def test_herald_summarises_each_proposal_into_one_line(base_state, mock_api_key):
+    summaries = {
+        "DeadlineHawk": "Front-load the deadline; pack Monday and Tuesday.",
+        "EnergyGuardian": "Spread the load; guard recovery between blocks.",
+        "FocusBatcher": "Batch like with like; defend long focus windows.",
+    }
+    patcher = _patch_herald_anthropic(text=json.dumps({"summaries": summaries}))
+    try:
+        result = make_herald_node(mock_api_key)(_herald_state(base_state))
+    finally:
+        patcher.stop()
+
+    assert result["proposal_summaries"] == summaries
+
+
+def test_herald_keys_always_match_the_proposals(base_state, mock_api_key):
+    # Model under-delivers (only one champion) and invents an extra key. The node
+    # must return exactly the proposal keys — no stray champion, none dropped.
+    noisy = {
+        "DeadlineHawk": "Front-load the deadline.",
+        "PhantomChampion": "I do not exist.",
+    }
+    patcher = _patch_herald_anthropic(text=json.dumps({"summaries": noisy}))
+    try:
+        result = make_herald_node(mock_api_key)(_herald_state(base_state))
+    finally:
+        patcher.stop()
+
+    assert set(result["proposal_summaries"].keys()) == set(_HERALD_PROPOSALS)
+    # The delivered line is kept; the missing champion falls back to its first sentence.
+    assert result["proposal_summaries"]["DeadlineHawk"] == "Front-load the deadline."
+    assert (
+        result["proposal_summaries"]["EnergyGuardian"]
+        == "Spread the work across the week with recovery gaps."
+    )
+
+
+def test_herald_falls_back_to_first_sentence_on_invalid_json(base_state, mock_api_key):
+    # The Herald never blocks the vote: a malformed model reply degrades to the
+    # opening sentence of each proposal rather than raising.
+    patcher = _patch_herald_anthropic(text="not json at all {")
+    try:
+        result = make_herald_node(mock_api_key)(_herald_state(base_state))
+    finally:
+        patcher.stop()
+
+    assert set(result["proposal_summaries"].keys()) == set(_HERALD_PROPOSALS)
+    assert (
+        result["proposal_summaries"]["DeadlineHawk"]
+        == "Front-load deep work Monday and Tuesday to clear the deadline."
+    )
+    assert (
+        result["proposal_summaries"]["FocusBatcher"]
+        == "Batch all writing into two long Wednesday blocks."
+    )
+
+
+def test_herald_prompt_is_neutral_and_one_line_per_champion(base_state, mock_api_key):
+    captured = {}
+
+    def _create(**kwargs):
+        captured["content"] = kwargs["messages"][0]["content"]
+        resp = MagicMock()
+        resp.content[0].text = '{"summaries": {}}'
+        return resp
+
+    patcher = _patch_herald_anthropic(side_effect=_create)
+    try:
+        make_herald_node(mock_api_key)(_herald_state(base_state))
+    finally:
+        patcher.stop()
+
+    prompt = captured["content"].lower()
+    # Each champion's actual proposal is handed to the Herald to distil.
+    assert "front-load deep work monday" in prompt
+    # Neutrality red line: one sentence each, no ranking / recommending a winner.
+    assert "one sentence" in prompt
+    assert "recommend" in prompt or "rank" in prompt
+
+
+def test_herald_no_proposals_returns_empty_without_calling_model(base_state, mock_api_key):
+    called = {"n": 0}
+
+    def _create(**kwargs):
+        called["n"] += 1
+        resp = MagicMock()
+        resp.content[0].text = '{"summaries": {}}'
+        return resp
+
+    patcher = _patch_herald_anthropic(side_effect=_create)
+    try:
+        result = make_herald_node(mock_api_key)({**base_state, "proposals": {}})
+    finally:
+        patcher.stop()
+
+    assert result["proposal_summaries"] == {}
+    assert called["n"] == 0  # no proposals → nothing to summarise, no LLM spend
 
 
 # ── finalize ────────────────────────────────────────────────────────────────
