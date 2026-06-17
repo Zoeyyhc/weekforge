@@ -3586,12 +3586,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "bcrypt" },
     { name = "crewai" },
     { name = "fastapi" },
     { name = "icalendar" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-sqlite" },
     { name = "pydantic" },
+    { name = "pyjwt" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -3605,12 +3607,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
+    { name = "bcrypt", specifier = ">=4.0" },
     { name = "crewai", specifier = ">=0.80" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "icalendar", specifier = ">=5.0" },
     { name = "langgraph", specifier = ">=0.2" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.7" },
+    { name = "pyjwt", specifier = ">=2.8" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
 ]
 
