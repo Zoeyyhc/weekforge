@@ -161,6 +161,34 @@ TDD per project convention — failing test first.
   as busy. Clean follow-up: add `recurring-ical-events` and expand RRULE within the week
   window. Note this in `README.md`.
 
+## Extensibility: adding auth later
+
+Accounts are a future, **additive** layer — this design deliberately keeps the door open
+and the implementation plan must not hard-code "anonymous" assumptions that block it.
+
+- **Identity is independent of the deleted Calendar OAuth.** "Sign in with Google" for
+  identity uses `openid email profile` — neither sensitive nor restricted, so **no Google
+  verification** (no CASA, no branding gate, no warning screen). Email/password is equally
+  additive. Deleting Calendar OAuth costs nothing here.
+- **Session seam already exists.** Sessions are keyed by `thread_id` (`api/sessions.py`,
+  mirrored by the LangGraph checkpointer). Adding auth = hang a **nullable `user_id`** on
+  `Session` and filter lookups by it; the anonymous flow keeps working with `user_id = None`.
+  A column, not a redesign.
+- **ICS I/O is stateless request/response** — it never assumes anonymity. An authed user
+  uploads/downloads identically; you'd just *additionally* persist their uploaded calendar
+  and past weeks under their `user_id`.
+- **No secret-storage retrofit.** With the Google token store deleted, there is no per-user
+  secret to migrate when auth arrives.
+
+**Implementation constraints to honor now (so auth stays additive):**
+
+1. Keep ICS import/export endpoints free of any session-ownership checks beyond `thread_id`;
+   do not bake in a hard "no identity" assumption.
+2. Treat `thread_id` as the single persistence key; do not scatter ownership logic.
+3. Pre-existing gap (out of scope here, not introduced by this plan): `SessionManager` is an
+   in-memory dict. "Remember my past weeks" will need durable per-user storage — a separate
+   future task.
+
 ## Migration notes
 
 - Drop the removed env vars from `CLAUDE.md` and any `.env.example` / deployment docs.
