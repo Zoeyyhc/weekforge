@@ -11,7 +11,6 @@ def test_build_app_passes_arbiter_model(monkeypatch):
 
     with (
         patch("weekforge.api.server.build_council") as mock_bc,
-        patch("weekforge.api.server._build_google_integration"),
         patch("weekforge.api.server.create_app"),
     ):
         from weekforge.api.server import build_app
