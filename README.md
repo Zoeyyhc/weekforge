@@ -62,17 +62,15 @@ The `arbitrate ↔ validate` loop is **bounded** (`max_validation_attempts`, def
 **3. Every block is checked against hard rules before you ever see it.**
 The semantic guardrail rejects anything that violates reality: outside your work window, overlapping a real commitment, over your daily focus cap, crossing midnight, or landing in the past. The agents debate; the guardrail referees.
 
-## Safe-by-design Google Calendar sync
+## Calendar
 
-WeekForge can read your busy blocks and write the forged schedule back to your **primary** Google Calendar — without ever putting your real life at risk.
-
-- Every event WeekForge creates is tagged with a **private marker** (`extendedProperties.private.weekforge="1"`).
-- It will **only ever modify or delete its own marked blocks — never your real events.** This is enforced in two independent layers (a server-side filter *and* a client-side guard) so a single bug can't breach it.
-- On the next plan it **skips its own past output**, re-planning those blocks fresh instead of mistaking them for immovable commitments.
+- **Export is file-based and API-free.** WeekForge generates an `.ics` you download and import into any calendar (Google / Apple / Outlook). No Google account, no OAuth.
+- **No calendar import yet.** Enter your existing commitments as busy blocks in the form; WeekForge cannot read them from a calendar in this version.
+- Every generated event is stamped `X-WEEKFORGE:1` so a future import path can skip WeekForge's own output and never double-count it as busy.
 
 ## Getting started
 
-**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js (frontend), an Anthropic API key, and — optionally — Google OAuth credentials for calendar sync.
+**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js (frontend), an Anthropic API key.
 
 **Configure** (full table in [`CLAUDE.md`](CLAUDE.md)):
 
@@ -81,17 +79,12 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 # Optional: run the Arbiter on a stronger model than the debaters
 export WEEKFORGE_ARBITER_MODEL=anthropic/claude-sonnet-...   # falls back to WEEKFORGE_MODEL
-
-# Optional: Google Calendar sync
-export GOOGLE_OAUTH_CLIENT_ID=...
-export GOOGLE_OAUTH_CLIENT_SECRET=...
-export GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8000/auth/google/callback
 ```
 
 **Run it:**
 
 ```bash
-# Backend  →  http://127.0.0.1:8000
+# Backend  →  http://127.0.0.1:8001
 uv run weekforge-api
 
 # Frontend →  http://localhost:3000
@@ -120,9 +113,8 @@ src/weekforge/
     debaters.py    # the four CrewAI agents
     runner.py      # streaming debate generator
     state.py       # DebateState
-  providers/     # Google Calendar read/write (marker-safe)
-  auth/          # Google OAuth + token store
-  api/           # FastAPI app, debate + calendar routes, SSE streaming
+  providers/     # ICSCalendarWriter (export) + ICSCalendarProvider (future import)
+  api/           # FastAPI app, debate + ICS export routes, SSE streaming
   models.py      # Task / TimeBlock / Schedule / Preferences
 frontend/        # Next.js debate-timeline UI + editable schedule
 docs/            # architecture, design specs, and TDD plans
@@ -131,7 +123,7 @@ tests/           # pytest suite
 
 ## Status
 
-A portfolio project showcasing **justified** multi-agent orchestration — every architectural choice exists to answer "why this, and not a single prompt?" The debate engine, the deterministic guardrails, and safe Google Calendar read/write are implemented and tested. Design specs and test-first implementation plans live under [`docs/superpowers/`](docs/superpowers/).
+A portfolio project showcasing **justified** multi-agent orchestration — every architectural choice exists to answer "why this, and not a single prompt?" The debate engine, the deterministic guardrails, and API-free `.ics` calendar export are implemented and tested. Design specs and test-first implementation plans live under [`docs/superpowers/`](docs/superpowers/).
 
 <div align="center">
 <sub>Built with CrewAI · LangGraph · FastAPI · Next.js · Claude</sub>

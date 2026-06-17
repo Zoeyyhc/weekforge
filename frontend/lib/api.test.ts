@@ -1,13 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { startDebate, sendIntervention, streamUrl } from "@/lib/api";
-import {
-  googleStatus, googleLoginUrl, listCalendars, importBusy,
-  exportSchedule, googleDisconnectUrl, googleDisconnect,
-} from "@/lib/api";
+import { exportIcs } from "@/lib/api";
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+afterEach(() => vi.restoreAllMocks());
 
 describe("startDebate", () => {
   it("POSTs the request and returns the thread_id", async () => {
@@ -53,62 +48,16 @@ describe("streamUrl", () => {
   });
 });
 
-describe("google calendar helpers", () => {
-  it("googleStatus returns connected flag", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ connected: true }) })));
-    expect(await googleStatus("http://api")).toBe(true);
-  });
-
-  it("googleLoginUrl builds the login endpoint", () => {
-    expect(googleLoginUrl("http://api")).toBe("http://api/auth/google/login");
-  });
-
-  it("listCalendars returns the calendars array", async () => {
-    const cals = [{ id: "p", summary: "me", primary: true, selected_by_default: true }];
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ calendars: cals }) })));
-    expect(await listCalendars("http://api")).toEqual(cals);
-  });
-
-  it("importBusy passes week_start and repeated calendar_ids", async () => {
-    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => ({ busy_blocks: [] }) }));
+describe("exportIcs", () => {
+  it("POSTs blocks and returns a blob", async () => {
+    const blob = new Blob(["BEGIN:VCALENDAR"], { type: "text/calendar" });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob });
     vi.stubGlobal("fetch", fetchMock);
-    await importBusy("2026-06-15", ["a@x", "b@x"], "http://api");
-    const url = fetchMock.mock.calls[0][0];
-    expect(url).toContain("/calendar/google/busy?");
-    expect(url).toContain("week_start=2026-06-15");
-    expect(url).toContain("calendar_ids=a%40x");
-    expect(url).toContain("calendar_ids=b%40x");
-  });
-
-  it("exportSchedule posts week_start and blocks, returns the result", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, json: async () => ({ written: 2, calendar_url: "u" }) }));
-    vi.stubGlobal("fetch", fetchMock);
-    const res = await exportSchedule(
-      "2026-06-15T00:00:00+00:00",
-      [{ start: "s", end: "e", label: "L", task_id: "t1" }],
-      "Australia/Sydney",
-      "http://api",
+    const out = await exportIcs("2026-06-15T00:00:00", [], "Australia/Sydney", "http://api");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api/calendar/ics/export",
+      expect.objectContaining({ method: "POST" }),
     );
-    expect(res).toEqual({ written: 2, calendar_url: "u" });
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("http://api/calendar/google/export");
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.blocks).toHaveLength(1);
-    expect(body.time_zone).toBe("Australia/Sydney");
-  });
-
-  it("googleDisconnectUrl builds the disconnect endpoint", () => {
-    expect(googleDisconnectUrl("http://api")).toBe("http://api/auth/google/disconnect");
-  });
-
-  it("googleDisconnect POSTs to the disconnect endpoint", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, json: async () => ({}) }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await googleDisconnect("http://api");
-
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("http://api/auth/google/disconnect");
-    expect(init.method).toBe("POST");
+    expect(out).toBe(blob);
   });
 });

@@ -23,7 +23,7 @@ app/app/page.tsx    → the debate tool, route /app
   ├── idle      → TaskForm (stepped "Crucible Intake" wizard: Tasks → Busy Blocks → Preferences, sample pre-filled)
   ├── streaming → DebateTimeline (live round-by-round messages, tabbed by round)
   ├── interrupted → InterventionPanel (quick-actions + free text → resume)
-  └── done      → CouncilRoster + WeekCalendar (forged week, blocks grouped by day) + DebateTimeline transcript
+  └── done      → CouncilRoster + WeekCalendar (forged week, editable blocks) + ExportButton (Download .ics) + DebateTimeline transcript
 ```
 
 Routes: `/` is the landing page; `/app` is the live debate tool. Landing-only
@@ -38,7 +38,7 @@ Three agents debate (DeadlineHawk, EnergyGuardian, FocusBatcher), an Arbiter syn
 ANTHROPIC_API_KEY=sk-... uv run weekforge-api
 
 # 2. Configure the frontend
-cp .env.local.example .env.local   # points at http://127.0.0.1:8000
+cp .env.local.example .env.local   # points at http://127.0.0.1:8001
 
 # 3. Start the dev server
 npm run dev
@@ -50,7 +50,7 @@ Open http://localhost:3000 for the landing page. Click **Convene the council**
 ## Tests
 
 ```bash
-npm test          # 119 tests, all unit/integration (no network)
+npm test          # 144 tests, all unit/integration (no network)
 npm run test:watch
 ```
 
