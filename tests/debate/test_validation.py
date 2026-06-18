@@ -17,7 +17,7 @@ def _block(label, start_h, end_h, *, task_id=None):
 
 
 def _prefs(**kw):
-    base = dict(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360)
+    base = dict(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360, max_focus_minutes_per_block=120)
     base.update(kw)
     return Preferences(**base)
 
@@ -115,7 +115,7 @@ def test_block_before_window_start_is_broken():
 def test_block_inside_window_is_ok():
     from zoneinfo import ZoneInfo
     tz = ZoneInfo("Australia/Sydney")
-    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
+    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney")
     window = (datetime(2026, 6, 16, 9, tzinfo=tz), datetime(2026, 6, 21, 18, tzinfo=tz))
     block = TimeBlock(start=datetime(2026, 6, 16, 9, tzinfo=tz),
                       end=datetime(2026, 6, 16, 11, tzinfo=tz), label="OK", task_id="t1")
