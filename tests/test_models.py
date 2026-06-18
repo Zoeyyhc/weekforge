@@ -76,3 +76,22 @@ def test_task_remark_defaults_to_none():
 def test_task_remark_accepts_string():
     task = Task(id="t1", title="Write report", estimated_minutes=90, remark="Do this in the morning")
     assert task.remark == "Do this in the morning"
+
+
+def test_preferences_default_max_focus_per_block_is_90():
+    assert Preferences().max_focus_minutes_per_block == 90
+
+
+def test_preferences_per_block_must_not_exceed_per_day():
+    with pytest.raises(ValidationError):
+        Preferences(max_focus_minutes_per_day=120, max_focus_minutes_per_block=240)
+
+
+def test_preferences_per_block_equal_to_per_day_is_allowed():
+    prefs = Preferences(max_focus_minutes_per_day=120, max_focus_minutes_per_block=120)
+    assert prefs.max_focus_minutes_per_block == 120
+
+
+def test_preferences_per_block_must_be_positive():
+    with pytest.raises(ValidationError):
+        Preferences(max_focus_minutes_per_block=0)

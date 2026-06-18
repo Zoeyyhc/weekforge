@@ -47,12 +47,17 @@ class Preferences(BaseModel):
     workday_start_hour: int = Field(default=9, ge=0, le=23)
     workday_end_hour: int = Field(default=18, ge=1, le=24)
     max_focus_minutes_per_day: int = Field(default=360, gt=0)
+    max_focus_minutes_per_block: int = Field(default=90, gt=0)
     timezone: str | None = None
 
     @model_validator(mode="after")
     def _end_after_start(self) -> Preferences:
         if self.workday_end_hour <= self.workday_start_hour:
             raise ValueError("workday_end_hour must be after workday_start_hour")
+        if self.max_focus_minutes_per_block > self.max_focus_minutes_per_day:
+            raise ValueError(
+                "max_focus_minutes_per_block must not exceed max_focus_minutes_per_day"
+            )
         return self
 
 
