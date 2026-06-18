@@ -16,6 +16,7 @@ from weekforge.debate.validation import (
     _localize,
     classify_blocks,
     remaining_focus_budget,
+    underscheduled_tasks,
     validate_blocks,
 )
 from weekforge.debate.state import DEBATER_NAMES, DebateEvent, DebateState
@@ -451,11 +452,19 @@ def make_validate_node(api_key: str):
                     "validation_attempts": state.get("validation_attempts", 0) + 1,
                     "transcript": [event],
                 }
+            short = underscheduled_tasks(blocks, state["tasks"])
+            warning = None
+            if short:
+                titles = {t.id: t.title for t in state["tasks"]}
+                warning = "Under-scheduled tasks (the council could not fit all estimated time): " + "; ".join(
+                    f"{titles.get(tid, tid)}: only {got} of {est}min scheduled"
+                    for tid, (got, est) in sorted(short.items())
+                )
             return {
                 "schedule": Schedule(blocks=blocks),
                 "validation_error": None,
                 "degraded": False,
-                "validation_warnings": None,
+                "validation_warnings": warning,
                 "best_effort_schedule": None,
                 "frozen_blocks": [],
             }

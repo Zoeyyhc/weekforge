@@ -333,6 +333,9 @@ def test_validate_success_clears_stale_best_effort_metadata(base_state, mock_api
     )
     state = {
         **base_state,
+        # task estimated == block duration (60min) → no underscheduled warning
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=60, priority=1)],
+        "busy_blocks": [],
         "arbiter_output": valid_json_output,
         "round_number": 2,
         "best_effort_schedule": stale_best_effort,
@@ -1049,6 +1052,66 @@ def test_dst_window_scenario_converges(mock_api_key):
 
 
 # ── per-block cap in arbitrate context ──────────────────────────────────────
+
+def test_validate_success_warns_when_task_underscheduled(base_state, mock_api_key):
+    # task t1 estimated 180min; Arbiter returns one 90min block → underscheduled warning
+    one_block_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:30:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    state = {
+        **base_state,
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=180, priority=1)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=90),
+        "arbiter_output": one_block_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = one_block_json
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    assert result["degraded"] is False
+    assert result["validation_warnings"] is not None
+    assert "Write report" in result["validation_warnings"]
+    assert "180" in result["validation_warnings"]
+
+
+def test_validate_success_no_warning_when_fully_scheduled(base_state, mock_api_key):
+    # task t1 estimated 60min; Arbiter returns a 60min block → no warning
+    full_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    state = {
+        **base_state,
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=60, priority=1)],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=90),
+        "arbiter_output": full_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = full_json
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    assert result["validation_warnings"] is None
+
 
 def test_arbitrate_context_includes_per_block_cap_and_split_rule(base_state):
     captured = {}
