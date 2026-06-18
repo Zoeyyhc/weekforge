@@ -269,7 +269,7 @@ def test_scoped_repair_converges_in_one_retry(base_state, mock_api_key):
         ],
         "busy_blocks": [],
         "preferences": Preferences(
-            workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600, timezone=None
+            workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600, max_focus_minutes_per_block=120, timezone=None
         ),
         "round_number": 1,
         "validation_attempts": 0,
@@ -454,7 +454,7 @@ def test_validate_freezes_valid_blocks_and_scopes_feedback(base_state, mock_api_
             Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
         ],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone=None),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone=None),
         "arbiter_output": two_blocks_json,
         "round_number": 1,
         "validation_attempts": 0,
@@ -874,7 +874,7 @@ def test_validate_merges_frozen_blocks_from_state(mock_api_key):
             Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
         ],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "frozen_blocks": [frozen],
@@ -918,7 +918,7 @@ def test_validate_drops_model_reemission_of_frozen(mock_api_key):
         "tasks": [Task(id="t1", title="W", estimated_minutes=120),
                   Task(id="t2", title="R", estimated_minutes=60)],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "frozen_blocks": [frozen],
@@ -952,7 +952,7 @@ def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
     state = {
         "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1)],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "arbiter_output": wrong_offset_json,
@@ -1008,7 +1008,7 @@ def test_dst_window_scenario_converges(mock_api_key):
         "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
                   Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2)],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "round_number": 1, "validation_attempts": 0, "max_validation_attempts": 3, "max_rounds": 3,
@@ -1046,3 +1046,28 @@ def test_dst_window_scenario_converges(mock_api_key):
     # Write report kept at 09:00 local (ZoneInfo-localized by _localize), nothing on the past Monday.
     t1 = next(b for b in r2["schedule"].blocks if b.label == "Write report")
     assert t1.start.astimezone(tz).day == 16 and t1.start.astimezone(tz).hour == 9
+
+
+# ── per-block cap in arbitrate context ──────────────────────────────────────
+
+def test_arbitrate_context_includes_per_block_cap_and_split_rule(base_state):
+    captured = {}
+
+    class RecordingCouncil:
+        def arbitrate(self, context: str) -> str:
+            captured["context"] = context
+            return "[]"
+
+    state = {
+        **base_state,
+        "proposals": {n: "p" for n in DEBATER_NAMES},
+        "critiques": {n: "c" for n in DEBATER_NAMES},
+        "round_number": 1,
+        "preferences": Preferences(),  # default has max_focus_minutes_per_block == 90
+    }
+
+    make_arbitrate_node(RecordingCouncil())(state)
+    ctx = captured["context"]
+
+    assert "single focus" in ctx.lower() or "90min" in ctx
+    assert "task_id" in ctx and "distinct label" in ctx.lower()
