@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from weekforge.debate.nodes import validate_blocks
+from weekforge.debate.validation import classify_blocks, underscheduled_tasks
 from weekforge.models import Preferences, Task, TimeBlock
 
 
@@ -64,7 +65,7 @@ def test_block_before_work_start_is_reported():
 
 def test_block_within_work_window_passes():
     blocks = [_block("Focus", 9, 11)]
-    errors = validate_blocks(blocks, [], [], Preferences(workday_start_hour=9, workday_end_hour=18))
+    errors = validate_blocks(blocks, [], [], Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120))
     assert errors == []
 
 
@@ -96,7 +97,7 @@ def test_local_timezone_applied_for_work_window():
 def test_cross_midnight_block_is_reported():
     # Starts 22:00 on the 15th, ends 00:30 on the 16th → spans midnight.
     blocks = [_block("Night owl", 22, 0, start_day=15, end_day=16, end_m=30)]
-    prefs = Preferences(workday_start_hour=8, workday_end_hour=24)
+    prefs = Preferences(workday_start_hour=8, workday_end_hour=24, max_focus_minutes_per_block=180)
     errors = validate_blocks(blocks, [], [], prefs)
     assert len(errors) == 1
     assert "spans midnight" in errors[0]
@@ -126,7 +127,7 @@ def test_same_day_block_after_work_end_is_reported():
         blocks,
         [],
         [],
-        Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600),
+        Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600, max_focus_minutes_per_block=600),
     )
     assert len(errors) == 1
     assert "after work window" in errors[0]
@@ -138,7 +139,7 @@ def test_same_day_block_after_work_end_is_reported():
 def test_block_overlapping_busy_is_reported():
     blocks = [_block("Work", 10, 12)]
     busy = [_block("Meeting", 11, 13)]
-    errors = validate_blocks(blocks, [], busy, Preferences())
+    errors = validate_blocks(blocks, [], busy, Preferences(max_focus_minutes_per_block=120))
     assert len(errors) == 1
     assert "overlaps with busy" in errors[0]
     assert "Meeting" in errors[0]
@@ -182,7 +183,7 @@ def test_meeting_daily_max_exactly_passes():
         _block("Block B", 11, 13),
         _block("Block C", 13, 15),
     ]
-    prefs = Preferences(workday_start_hour=8, workday_end_hour=20, max_focus_minutes_per_day=360)
+    prefs = Preferences(workday_start_hour=8, workday_end_hour=20, max_focus_minutes_per_day=360, max_focus_minutes_per_block=120)
     errors = validate_blocks(blocks, [], [], prefs)
     assert not any("exceeds" in e for e in errors)
 
@@ -193,7 +194,7 @@ def test_all_valid_returns_empty_list():
     blocks = [_block("Deep work", 9, 11, task_id="t1")]
     tasks = [_task("t1")]
     busy = [_block("Standup", 8, 9)]
-    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360)
+    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360, max_focus_minutes_per_block=120)
     errors = validate_blocks(blocks, tasks, busy, prefs)
     assert errors == []
 
@@ -206,3 +207,77 @@ def test_timezone_none_fallback_utc_does_not_crash():
     prefs = Preferences(workday_start_hour=9, timezone=None)
     errors = validate_blocks(blocks, [], [], prefs)
     assert any("before work window" in e for e in errors)
+
+
+# ── Rule 6: per-block focus cap ──────────────────────────────────────────────
+
+def test_block_over_per_block_cap_is_reported_and_not_frozen():
+    prefs = Preferences(max_focus_minutes_per_block=90, max_focus_minutes_per_day=360)
+    task = Task(id="t1", title="Report", estimated_minutes=180)
+    block = TimeBlock(
+        start=datetime(2026, 6, 16, 9, 0, tzinfo=timezone.utc),
+        end=datetime(2026, 6, 16, 12, 0, tzinfo=timezone.utc),  # 180min
+        label="Report",
+        task_id="t1",
+    )
+    report = classify_blocks([block], [task], [], prefs)
+    rep = report.reports[0]
+    assert not rep.frozen
+    assert any("single-focus cap" in e for e in rep.errors)
+
+
+def test_block_at_per_block_cap_is_clean():
+    prefs = Preferences(max_focus_minutes_per_block=90, max_focus_minutes_per_day=360)
+    task = Task(id="t1", title="Report", estimated_minutes=90)
+    block = TimeBlock(
+        start=datetime(2026, 6, 16, 9, 0, tzinfo=timezone.utc),
+        end=datetime(2026, 6, 16, 10, 30, tzinfo=timezone.utc),  # 90min
+        label="Report",
+        task_id="t1",
+    )
+    report = classify_blocks([block], [task], [], prefs)
+    assert report.reports[0].frozen
+
+
+# ── underscheduled_tasks helper ──────────────────────────────────────────────
+
+def test_underscheduled_tasks_flags_short_task():
+    tasks = [Task(id="t1", title="Report", estimated_minutes=180)]
+    blocks = [
+        TimeBlock(
+            start=datetime(2026, 6, 16, 9, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 6, 16, 10, 30, tzinfo=timezone.utc),  # 90min
+            label="Report (1/2)",
+            task_id="t1",
+        )
+    ]
+    assert underscheduled_tasks(blocks, tasks) == {"t1": (90, 180)}
+
+
+def test_underscheduled_tasks_sums_multiple_blocks_and_omits_complete():
+    tasks = [Task(id="t1", title="Report", estimated_minutes=180)]
+    blocks = [
+        TimeBlock(
+            start=datetime(2026, 6, 16, 9, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 6, 16, 10, 30, tzinfo=timezone.utc),  # 90
+            label="Report (1/2)", task_id="t1",
+        ),
+        TimeBlock(
+            start=datetime(2026, 6, 16, 11, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 6, 16, 12, 30, tzinfo=timezone.utc),  # 90
+            label="Report (2/2)", task_id="t1",
+        ),
+    ]
+    assert underscheduled_tasks(blocks, tasks) == {}
+
+
+def test_underscheduled_tasks_ignores_blocks_without_task_id():
+    tasks = [Task(id="t1", title="Report", estimated_minutes=60)]
+    blocks = [
+        TimeBlock(
+            start=datetime(2026, 6, 16, 9, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 6, 16, 10, 0, tzinfo=timezone.utc),
+            label="Lunch", task_id=None,
+        )
+    ]
+    assert underscheduled_tasks(blocks, tasks) == {"t1": (0, 60)}

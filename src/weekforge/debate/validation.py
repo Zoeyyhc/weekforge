@@ -121,6 +121,13 @@ def classify_blocks(
                     f"({ws.strftime('%a %d %b %H:%M')}–{we.strftime('%a %d %b %H:%M')} local)"
                 )
 
+        # Rule 6: single block must not exceed the per-block focus cap
+        if block.duration_minutes > preferences.max_focus_minutes_per_block:
+            rep.errors.append(
+                f"Block '{block.label}': {block.duration_minutes}min exceeds "
+                f"{preferences.max_focus_minutes_per_block}min single-focus cap"
+            )
+
         day = local_start.date()
         block_local_day.append(day)
         minutes_per_day[day] = minutes_per_day.get(day, 0) + block.duration_minutes
@@ -159,6 +166,27 @@ def validate_blocks(
         errors.extend(rep.errors)
     errors.extend(report.day_errors)
     return errors
+
+
+def underscheduled_tasks(
+    blocks: list[TimeBlock],
+    tasks: list[Task],
+) -> dict[str, tuple[int, int]]:
+    """Per task_id: (scheduled_minutes, estimated_minutes) where scheduled < estimated.
+
+    Used for a non-blocking warning: splitting an over-long task can silently
+    drop work, so we surface any task whose scheduled minutes fall short.
+    """
+    scheduled: dict[str, int] = {}
+    for b in blocks:
+        if b.task_id is not None:
+            scheduled[b.task_id] = scheduled.get(b.task_id, 0) + b.duration_minutes
+    short: dict[str, tuple[int, int]] = {}
+    for t in tasks:
+        got = scheduled.get(t.id, 0)
+        if got < t.estimated_minutes:
+            short[t.id] = (got, t.estimated_minutes)
+    return short
 
 
 def remaining_focus_budget(
