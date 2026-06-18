@@ -72,6 +72,7 @@ export default function Home() {
           workdayStartHour: String(res.preferences.workday_start_hour),
           workdayEndHour: String(res.preferences.workday_end_hour),
           maxFocusMinutes: String(res.preferences.max_focus_minutes_per_day),
+          maxFocusPerBlock: String(res.preferences.max_focus_minutes_per_block),
           timezone: res.preferences.timezone,
         });
       })
@@ -158,6 +159,7 @@ export default function Home() {
         workday_start_hour: p.workday_start_hour ?? 9,
         workday_end_hour: p.workday_end_hour ?? 18,
         max_focus_minutes_per_day: p.max_focus_minutes_per_day ?? 360,
+        max_focus_minutes_per_block: p.max_focus_minutes_per_block ?? 90,
         timezone: p.timezone ?? null,
       };
       void savePreferences(token, prefs).catch(() => {});

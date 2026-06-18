@@ -76,6 +76,7 @@ const SEED_PREFS: PrefsDraft = {
   workdayStartHour: "9",
   workdayEndHour: "18",
   maxFocusMinutes: "360",
+  maxFocusPerBlock: "90",
 };
 
 const DAYS_ALL: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -99,6 +100,8 @@ function validateBlocks(blocks: BusyBlockDraft[]): string | null {
 function validatePrefs(prefs: PrefsDraft): string | null {
   if (Number(prefs.workdayStartHour) >= Number(prefs.workdayEndHour))
     return "Workday start must be before end.";
+  if (Number(prefs.maxFocusPerBlock) > Number(prefs.maxFocusMinutes))
+    return "Per-session focus cannot exceed daily focus.";
   return null;
 }
 
@@ -367,7 +370,7 @@ export function TaskForm({
                 title="Set your rhythm."
                 subtitle="When the workday opens and closes, and how long you can hold deep focus before the fire must cool."
               />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <PrefCard label="🕘 Start" hint="hour">
                   <input
                     data-testid="pref-start"
@@ -401,6 +404,17 @@ export function TaskForm({
                     onChange={(e) => setPrefs((p) => ({ ...p, maxFocusMinutes: e.target.value }))}
                     className="w-full border-0 border-b border-[#272430] bg-transparent py-1 font-mono text-2xl font-bold text-foreground outline-none transition-colors focus:border-ember"
                     aria-label="Max focus minutes per day"
+                  />
+                </PrefCard>
+                <PrefCard label="🔥 Per Session" hint="min / block">
+                  <input
+                    data-testid="pref-focus-block"
+                    type="number"
+                    min={0}
+                    value={prefs.maxFocusPerBlock}
+                    onChange={(e) => setPrefs((p) => ({ ...p, maxFocusPerBlock: e.target.value }))}
+                    className="w-full border-0 border-b border-[#272430] bg-transparent py-1 font-mono text-2xl font-bold text-foreground outline-none transition-colors focus:border-ember"
+                    aria-label="Max focus minutes per block"
                   />
                 </PrefCard>
               </div>
