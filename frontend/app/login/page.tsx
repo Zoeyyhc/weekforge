@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,14 +98,24 @@ export default function LoginPage() {
 
               <label className="flex flex-col gap-1.5 text-sm text-muted">
                 Password
-                <input
-                  type="password"
-                  className={INPUT_CLASS}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className={`${INPUT_CLASS} pr-16`}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                    autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-pressed={showPassword}
+                    className="absolute inset-y-0 right-3 my-auto h-fit font-mono text-[10px] uppercase tracking-[0.18em] text-muted transition-colors hover:text-amber"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
               </label>
 
               {error && <p className="text-sm leading-relaxed text-hawk">{error}</p>}

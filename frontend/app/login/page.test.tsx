@@ -43,6 +43,21 @@ describe("LoginPage", () => {
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
   });
 
+  it("toggles password visibility", async () => {
+    const user = userEvent.setup();
+
+    render(<LoginPage />);
+
+    const password = screen.getByLabelText(/password/i);
+    expect(password).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /show/i }));
+    expect(password).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: /hide/i }));
+    expect(password).toHaveAttribute("type", "password");
+  });
+
   it("submits signup with the display name and redirects to /app", async () => {
     const user = userEvent.setup();
 
