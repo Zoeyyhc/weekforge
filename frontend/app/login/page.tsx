@@ -65,31 +65,28 @@ export default function LoginPage() {
     <main className="relative min-h-dvh overflow-hidden">
       <ForgeBackground />
 
-      {/* Shared marks pinned to the page, so both halves sit on one ground. */}
+      {/* Shared mark pinned to the page, so both halves sit on one ground. */}
       <ForgeLogo
         size="md"
         href="/"
         className="absolute left-8 top-8 z-20 hidden lg:inline-flex xl:left-12 xl:top-12"
       />
-      <p className="absolute bottom-8 left-8 z-20 hidden font-mono text-[10px] uppercase tracking-[0.3em] text-muted/50 lg:block xl:left-12">
-        Local account · no calendar access
-      </p>
 
-      <div className="relative z-10 mx-auto grid min-h-dvh w-full max-w-4xl items-center gap-10 px-6 lg:grid-cols-2 lg:gap-10 lg:px-10">
-        {/* ── The forge — anvil + headline, leaning in toward the form. ── */}
-        <section className="relative hidden flex-col items-end text-right lg:flex">
+      <div className="relative z-10 mx-auto grid min-h-dvh w-full max-w-5xl items-center gap-16 px-6 py-16 lg:grid-cols-2 lg:gap-24 lg:px-12">
+        {/* ── The forge — a calm ambient presence; the atmosphere carries it. ── */}
+        <section className="relative hidden flex-col lg:flex">
           {/* The anvil, seated in a breathing heat pool, with a striking spark. */}
-          <div aria-hidden className="relative mb-8 h-40 w-40">
+          <div aria-hidden className="relative mb-12 h-32 w-32">
             <div
-              className="animate-heat-breathe pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+              className="animate-heat-breathe pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
               style={{
                 background:
-                  "radial-gradient(circle, rgba(255,107,53,0.32), rgba(245,166,35,0.13) 45%, transparent 70%)",
+                  "radial-gradient(circle, rgba(255,107,53,0.30), rgba(245,166,35,0.12) 45%, transparent 70%)",
               }}
             />
             <ForgeSigil
               decorative
-              className="h-40 w-40 drop-shadow-[0_0_22px_rgba(255,107,53,0.45)]"
+              className="h-32 w-32 drop-shadow-[0_0_22px_rgba(255,107,53,0.45)]"
             />
             <span
               className="animate-anvil-strike absolute left-[70%] top-[8%] block h-3 w-3 rounded-full"
@@ -123,12 +120,10 @@ export default function LoginPage() {
             {isSignup ? "A new hand at the anvil" : "The council reconvenes"}
           </p>
           <h2
-            className="animate-forge-in mt-5 font-display text-[clamp(2.4rem,4.5vw,3.6rem)] font-light leading-[0.98] tracking-[-0.02em] text-foreground"
+            className="animate-forge-in mt-6 font-display text-[clamp(1.75rem,2.6vw,2.25rem)] font-light leading-[1.18] tracking-[-0.01em] text-foreground"
             style={{ animationDelay: "0.16s" }}
           >
-            Step up to
-            <br />
-            the{" "}
+            Step up to the{" "}
             <span
               className="italic"
               style={{
@@ -137,7 +132,7 @@ export default function LoginPage() {
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 color: "transparent",
-                textShadow: "0 0 60px rgba(255,107,53,0.25)",
+                textShadow: "0 0 50px rgba(255,107,53,0.22)",
               }}
             >
               anvil
@@ -145,7 +140,7 @@ export default function LoginPage() {
             .
           </h2>
           <p
-            className="animate-forge-in mt-6 max-w-xs text-balance leading-relaxed text-muted"
+            className="animate-forge-in mt-7 max-w-[32ch] text-sm leading-loose text-muted"
             style={{ animationDelay: "0.32s" }}
           >
             Four opinionated minds are waiting to argue your week into shape.
@@ -168,7 +163,7 @@ export default function LoginPage() {
               {isSignup ? "Join the council" : "Enter the forge"}
             </h1>
 
-            <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
+            <form onSubmit={onSubmit} className="mt-9 flex flex-col gap-5">
               {isSignup && (
                 <label className="flex flex-col gap-1.5 text-sm text-muted">
                   Name
