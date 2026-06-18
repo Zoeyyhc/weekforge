@@ -65,118 +65,98 @@ export default function LoginPage() {
     <main className="relative min-h-dvh overflow-hidden">
       <ForgeBackground />
 
-      <div className="relative z-10 grid min-h-dvh lg:grid-cols-[1.35fr_1fr]">
-        {/* ── The forge: the immersive half. Boldness lives here. ── */}
-        <section className="relative hidden flex-col justify-between overflow-hidden p-10 lg:flex xl:p-16">
-          <ForgeLogo size="md" href="/" />
+      {/* Shared marks pinned to the page, so both halves sit on one ground. */}
+      <ForgeLogo
+        size="md"
+        href="/"
+        className="absolute left-8 top-8 z-20 hidden lg:inline-flex xl:left-12 xl:top-12"
+      />
+      <p className="absolute bottom-8 left-8 z-20 hidden font-mono text-[10px] uppercase tracking-[0.3em] text-muted/50 lg:block xl:left-12">
+        Local account · no calendar access
+      </p>
 
-          <div className="relative max-w-md">
-            {/* Breathing heat pool seating the anvil. */}
+      <div className="relative z-10 mx-auto grid min-h-dvh w-full max-w-4xl items-center gap-10 px-6 lg:grid-cols-2 lg:gap-10 lg:px-10">
+        {/* ── The forge — anvil + headline, leaning in toward the form. ── */}
+        <section className="relative hidden flex-col items-end text-right lg:flex">
+          {/* The anvil, seated in a breathing heat pool, with a striking spark. */}
+          <div aria-hidden className="relative mb-8 h-40 w-40">
             <div
-              aria-hidden
-              className="animate-heat-breathe pointer-events-none absolute -left-24 top-1/2 -z-10 h-[34rem] w-[34rem] -translate-y-1/2 rounded-full blur-3xl"
+              className="animate-heat-breathe pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
               style={{
                 background:
-                  "radial-gradient(circle, rgba(255,107,53,0.34), rgba(245,166,35,0.14) 45%, transparent 70%)",
+                  "radial-gradient(circle, rgba(255,107,53,0.32), rgba(245,166,35,0.13) 45%, transparent 70%)",
               }}
             />
-
-            {/* The anvil, large — and the spark that strikes off it. */}
-            <div aria-hidden className="relative mb-10 h-40 w-40">
-              <ForgeSigil
-                decorative
-                className="h-40 w-40 drop-shadow-[0_0_22px_rgba(255,107,53,0.45)]"
-              />
+            <ForgeSigil
+              decorative
+              className="h-40 w-40 drop-shadow-[0_0_22px_rgba(255,107,53,0.45)]"
+            />
+            <span
+              className="animate-anvil-strike absolute left-[70%] top-[8%] block h-3 w-3 rounded-full"
+              style={{
+                background:
+                  "radial-gradient(circle, var(--amber), var(--ember) 60%, transparent)",
+                boxShadow: "0 0 14px 3px rgba(245,166,35,0.7)",
+              }}
+            />
+            {FORGE_EMBERS.map((e, i) => (
               <span
-                className="animate-anvil-strike absolute left-[70%] top-[8%] block h-3 w-3 rounded-full"
+                key={i}
+                className="absolute bottom-2 rounded-full"
                 style={{
+                  left: e.left,
+                  width: e.size,
+                  height: e.size,
                   background:
                     "radial-gradient(circle, var(--amber), var(--ember) 60%, transparent)",
-                  boxShadow: "0 0 14px 3px rgba(245,166,35,0.7)",
+                  boxShadow: "0 0 8px 1px rgba(255,107,53,0.6)",
+                  animation: `ember-rise ${e.dur} linear ${e.delay} infinite`,
                 }}
               />
-              {/* Embers rising off the worked face. */}
-              {FORGE_EMBERS.map((e, i) => (
-                <span
-                  key={i}
-                  className="absolute bottom-2 rounded-full"
-                  style={{
-                    left: e.left,
-                    width: e.size,
-                    height: e.size,
-                    background:
-                      "radial-gradient(circle, var(--amber), var(--ember) 60%, transparent)",
-                    boxShadow: "0 0 8px 1px rgba(255,107,53,0.6)",
-                    animation: `ember-rise ${e.dur} linear ${e.delay} infinite`,
-                  }}
-                />
-              ))}
-            </div>
-
-            <p
-              className="animate-forge-in font-mono text-[11px] uppercase tracking-[0.42em] text-amber/80"
-              style={{ animationDelay: "0.05s" }}
-            >
-              {isSignup ? "A new hand at the anvil" : "The council reconvenes"}
-            </p>
-            <h2
-              className="animate-forge-in mt-5 font-display text-[clamp(2.6rem,5vw,4rem)] font-light leading-[0.98] tracking-[-0.02em] text-foreground"
-              style={{ animationDelay: "0.16s" }}
-            >
-              Step up to
-              <br />
-              the{" "}
-              <span
-                className="italic"
-                style={{
-                  background:
-                    "linear-gradient(180deg, var(--amber), var(--ember) 70%)",
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                  textShadow: "0 0 60px rgba(255,107,53,0.25)",
-                }}
-              >
-                anvil
-              </span>
-              .
-            </h2>
-            <p
-              className="animate-forge-in mt-6 max-w-sm text-balance leading-relaxed text-muted"
-              style={{ animationDelay: "0.32s" }}
-            >
-              Four opinionated minds are waiting to argue your week into shape.
-              Cross the threshold and convene them.
-            </p>
+            ))}
           </div>
 
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted/50">
-            Local account · no calendar access
+          <p
+            className="animate-forge-in font-mono text-[11px] uppercase tracking-[0.42em] text-amber/80"
+            style={{ animationDelay: "0.05s" }}
+          >
+            {isSignup ? "A new hand at the anvil" : "The council reconvenes"}
           </p>
-
-          {/* The molten seam, flaring in time with each strike. */}
-          <div
-            aria-hidden
-            className="animate-seam-pulse absolute inset-y-0 right-0 w-px"
-            style={{
-              background:
-                "linear-gradient(180deg, transparent, var(--ember) 30%, var(--amber) 55%, var(--ember) 80%, transparent)",
-            }}
-          />
-          <div
-            aria-hidden
-            className="animate-seam-pulse absolute inset-y-0 right-0 w-8 blur-2xl"
-            style={{
-              background:
-                "linear-gradient(180deg, transparent, rgba(255,107,53,0.35) 50%, transparent)",
-            }}
-          />
+          <h2
+            className="animate-forge-in mt-5 font-display text-[clamp(2.4rem,4.5vw,3.6rem)] font-light leading-[0.98] tracking-[-0.02em] text-foreground"
+            style={{ animationDelay: "0.16s" }}
+          >
+            Step up to
+            <br />
+            the{" "}
+            <span
+              className="italic"
+              style={{
+                background:
+                  "linear-gradient(180deg, var(--amber), var(--ember) 70%)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+                textShadow: "0 0 60px rgba(255,107,53,0.25)",
+              }}
+            >
+              anvil
+            </span>
+            .
+          </h2>
+          <p
+            className="animate-forge-in mt-6 max-w-xs text-balance leading-relaxed text-muted"
+            style={{ animationDelay: "0.32s" }}
+          >
+            Four opinionated minds are waiting to argue your week into shape.
+            Cross the threshold and convene them.
+          </p>
         </section>
 
-        {/* ── The work: quiet, disciplined. ── */}
-        <section className="relative flex items-center justify-center px-6 py-10 sm:px-10">
-          <div className="animate-forge-in w-full max-w-sm">
-            {/* On mobile the forge panel is hidden — give the form its mark. */}
+        {/* ── The work — quiet, disciplined. ── */}
+        <section className="relative w-full">
+          <div className="animate-forge-in mx-auto w-full max-w-sm lg:mx-0">
+            {/* On mobile the forge half is hidden — give the form its mark. */}
             <div className="mb-10 flex justify-center lg:hidden">
               <ForgeLogo size="md" href="/" />
             </div>
