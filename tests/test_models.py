@@ -82,9 +82,22 @@ def test_preferences_default_max_focus_per_block_is_90():
     assert Preferences().max_focus_minutes_per_block == 90
 
 
-def test_preferences_per_block_must_not_exceed_per_day():
-    with pytest.raises(ValidationError):
-        Preferences(max_focus_minutes_per_day=120, max_focus_minutes_per_block=240)
+def test_preferences_per_block_clamps_to_per_day_when_larger():
+    # A per-block cap above the daily cap is meaningless (the daily cap dominates),
+    # so it is clamped down rather than rejected — keeps loading robust.
+    prefs = Preferences(max_focus_minutes_per_day=120, max_focus_minutes_per_block=240)
+    assert prefs.max_focus_minutes_per_block == 120
+
+
+def test_preferences_legacy_json_without_per_block_clamps_to_per_day():
+    # Existing users saved prefs before the per-block field existed. If their daily
+    # cap is below the new default (90), loading must clamp — never crash.
+    legacy = (
+        '{"workday_start_hour": 9, "workday_end_hour": 18, '
+        '"max_focus_minutes_per_day": 60, "timezone": null}'
+    )
+    prefs = Preferences.model_validate_json(legacy)
+    assert prefs.max_focus_minutes_per_block == 60
 
 
 def test_preferences_per_block_equal_to_per_day_is_allowed():

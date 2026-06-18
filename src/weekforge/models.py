@@ -54,10 +54,12 @@ class Preferences(BaseModel):
     def _end_after_start(self) -> Preferences:
         if self.workday_end_hour <= self.workday_start_hour:
             raise ValueError("workday_end_hour must be after workday_start_hour")
+        # A per-block cap above the daily cap is meaningless (the daily cap already
+        # dominates), so clamp it down rather than reject. This keeps loading legacy
+        # preferences — saved before this field existed, with a daily cap below the
+        # default 90 — robust instead of crashing. The frontend validates user input.
         if self.max_focus_minutes_per_block > self.max_focus_minutes_per_day:
-            raise ValueError(
-                "max_focus_minutes_per_block must not exceed max_focus_minutes_per_day"
-            )
+            self.max_focus_minutes_per_block = self.max_focus_minutes_per_day
         return self
 
 
