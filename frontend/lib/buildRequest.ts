@@ -24,6 +24,7 @@ export interface PrefsDraft {
   workdayStartHour: string;
   workdayEndHour: string;
   maxFocusMinutes: string;
+  maxFocusPerBlock: string;
   timezone?: string | null;
 }
 
@@ -72,6 +73,7 @@ export function buildRequest(
       workday_start_hour: Number(prefs.workdayStartHour),
       workday_end_hour: Number(prefs.workdayEndHour),
       max_focus_minutes_per_day: Number(prefs.maxFocusMinutes),
+      max_focus_minutes_per_block: Number(prefs.maxFocusPerBlock),
       timezone: prefs.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     max_rounds: 3,
