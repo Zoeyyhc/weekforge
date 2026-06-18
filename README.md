@@ -27,7 +27,7 @@ Instead of one model silently optimizing a black box, WeekForge convenes a **cou
 | 🎯 **Focus Batcher** | Deep work | Long uninterrupted blocks, batched similar tasks — because fragmentation is the enemy of great work |
 | ⚖️ **The Arbiter** | The whole picture | A schedule that honors all three as well as reality allows — and *names the trade-offs it accepted* |
 
-They propose, critique each other, and converge. When they stall, **you** step in as the final arbiter: side with an agent, add a constraint, or veto an idea. What you get back is a time-blocked week **plus the full reasoning chain that produced it** — not a verdict from nowhere.
+They propose, critique each other, and converge. When they stall, **the Herald** steps forward and distils each side into a single line, then **you** rule as the final arbiter: side with an agent, add a constraint, or veto an idea (the full debate is always one click away). What you get back is a time-blocked week **plus the full reasoning chain that produced it** — not a verdict from nowhere.
 
 > The visible debate is the headline feature. Weekly planning is just the first application of a **domain-agnostic decision engine**: any problem where specialists with competing objectives must reach a justified, auditable decision.
 
@@ -37,7 +37,7 @@ They propose, critique each other, and converge. When they stall, **you** step i
  gather_proposals ──► critique ──► check_convergence ─┬─ converged ───► arbitrate ──► validate ──► finalize
         ▲                                             │                                  │  ▲          │
         └──────────── more rounds ────────────────────┤                                  └──┘          ▼
-                                                       └─ stalled ──► human_interrupt ──► (bounded loop)   schedule
+                                                       └─ stalled ──► herald ──► human_interrupt ──► (bounded loop)   schedule
 ```
 
 - **CrewAI** defines *who debates* — the four agents, their personas, goals, and backstories.
@@ -68,6 +68,12 @@ The semantic guardrail rejects anything that violates reality: outside your work
 - **No calendar import yet.** Enter your existing commitments as busy blocks in the form; WeekForge cannot read them from a calendar in this version.
 - Every generated event is stamped `X-WEEKFORGE:1` so a future import path can skip WeekForge's own output and never double-count it as busy.
 
+## Accounts and saved rhythm
+
+The planning console requires a local WeekForge account: email, password, and display name. Accounts are stored in the same local SQLite database as the debate checkpointer, passwords are bcrypt-hashed, and session tokens are signed with `WEEKFORGE_AUTH_SECRET`.
+
+When you start a debate, WeekForge saves your scheduling rhythm — workday start, workday end, daily focus cap, and timezone — and pre-fills it the next time you return. This does not add OAuth, third-party auth, calendar import, or calendar write access.
+
 ## Getting started
 
 **Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js (frontend), an Anthropic API key.
@@ -76,6 +82,7 @@ The semantic guardrail rejects anything that violates reality: outside your work
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+export WEEKFORGE_AUTH_SECRET=replace-with-a-long-random-secret
 
 # Optional: run the Arbiter on a stronger model than the debaters
 export WEEKFORGE_ARBITER_MODEL=anthropic/claude-sonnet-...   # falls back to WEEKFORGE_MODEL
@@ -114,7 +121,8 @@ src/weekforge/
     runner.py      # streaming debate generator
     state.py       # DebateState
   providers/     # ICSCalendarWriter (export) + ICSCalendarProvider (future import)
-  api/           # FastAPI app, debate + ICS export routes, SSE streaming
+  auth/          # SQLite local accounts, bcrypt password hashes, HS256 JWT helpers
+  api/           # FastAPI app, auth, authenticated debate + ICS export routes, SSE streaming
   models.py      # Task / TimeBlock / Schedule / Preferences
 frontend/        # Next.js debate-timeline UI + editable schedule
 docs/            # architecture, design specs, and TDD plans

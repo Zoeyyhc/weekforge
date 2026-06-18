@@ -1,6 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/authContext";
+import { fetchMe, savePreferences, type SavedPreferences } from "@/lib/auth";
+import type { PrefsDraft } from "@/lib/buildRequest";
 import { defaultWeekMonday, toISODate, toLocalMidnightISO } from "@/lib/weekWindow";
 import { useDebateStream } from "@/lib/useDebateStream";
 import { useFreshActivity } from "@/lib/useFreshActivity";
@@ -9,6 +13,7 @@ import { TaskForm } from "@/components/TaskForm";
 import { ForgeLogo } from "@/components/ForgeLogo";
 import { AppAtmosphere } from "@/components/AppAtmosphere";
 import { ForgedModal } from "@/components/ForgedModal";
+import { HeraldModal } from "@/components/HeraldModal";
 import { DebateTimeline } from "@/components/DebateTimeline";
 import { DebateStatusBand } from "@/components/DebateStatusBand";
 import { CouncilRoster } from "@/components/CouncilRoster";
@@ -17,7 +22,7 @@ import { WeekCalendar } from "@/components/WeekCalendar";
 import { ExportButton } from "@/components/ExportButton";
 import { DebateStatus } from "@/lib/debateReducer";
 import { exportIcs } from "@/lib/api";
-import { TimeBlock, StartDebateRequest } from "@/lib/types";
+import { TimeBlock, StartDebateRequest, InterruptMsg } from "@/lib/types";
 
 const STATUS_LABEL: Record<DebateStatus, string> = {
   idle: "Ready",
@@ -28,12 +33,56 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const { token, user, status, signOut } = useAuth();
   const { state, maxRounds, start, intervene, reset } = useDebateStream();
+  const [initialPrefs, setInitialPrefs] = useState<PrefsDraft | undefined>(undefined);
+  const [prefsReady, setPrefsReady] = useState(false);
   const [weekStart, setWeekStart] = useState(() =>
     toISODate(defaultWeekMonday(new Date(), 18)),
   );
   const latestWeekStartRef = useRef(weekStart);
   const showForm = state.status === "idle";
+
+  useEffect(() => {
+    if (status === "anon") router.push("/login");
+  }, [status, router]);
+
+  useEffect(() => {
+    if (status !== "authed") {
+      setInitialPrefs(undefined);
+      setPrefsReady(false);
+      return;
+    }
+    setInitialPrefs(undefined);
+    if (!token) {
+      setPrefsReady(true);
+      return;
+    }
+    let cancelled = false;
+    setPrefsReady(false);
+    fetchMe(token)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.preferences) {
+          setInitialPrefs(undefined);
+          return;
+        }
+        setInitialPrefs({
+          workdayStartHour: String(res.preferences.workday_start_hour),
+          workdayEndHour: String(res.preferences.workday_end_hour),
+          maxFocusMinutes: String(res.preferences.max_focus_minutes_per_day),
+          timezone: res.preferences.timezone,
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPrefsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, token]);
 
   // Celebrate the verdict exactly once per debate. Fires when the stream lands
   // on "done"; the flag resets when the user starts over (status → idle).
@@ -48,6 +97,17 @@ export default function Home() {
       setShowForged(false);
     }
   }, [state.status]);
+  // The Herald rises to summarise the divided council whenever the debate
+  // interrupts for your ruling. Dismissing it ("read the full debate") records
+  // which interrupt was waved off, so a fresh interrupt re-summons the Herald
+  // without an effect.
+  const [dismissedInterrupt, setDismissedInterrupt] =
+    useState<InterruptMsg | null>(null);
+  const heraldOpen =
+    state.status === "interrupted" &&
+    !!state.interrupt &&
+    state.interrupt !== dismissedInterrupt;
+
   // A speaker is "live" only briefly after their event; during the silent
   // convergence/arbiter gaps the band/roster fall back to "deliberating…".
   const speakingActive = useFreshActivity(state.events.length, 3500);
@@ -92,7 +152,21 @@ export default function Home() {
   }
 
   function handleStart(req: StartDebateRequest) {
+    if (token && req.preferences) {
+      const p = req.preferences;
+      const prefs: SavedPreferences = {
+        workday_start_hour: p.workday_start_hour ?? 9,
+        workday_end_hour: p.workday_end_hour ?? 18,
+        max_focus_minutes_per_day: p.max_focus_minutes_per_day ?? 360,
+        timezone: p.timezone ?? null,
+      };
+      void savePreferences(token, prefs).catch(() => {});
+    }
     start({ ...req, week_start: weekStart });
+  }
+
+  if (status !== "authed") {
+    return null;
   }
 
   return (
@@ -107,14 +181,25 @@ export default function Home() {
             forge your week in the crucible
           </p>
         </div>
-        <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
-          {STATUS_LABEL[state.status]}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs text-muted">{user?.display_name}</span>
+          <button
+            type="button"
+            onClick={signOut}
+            className="rounded-full border border-border px-3 py-1 text-xs text-foreground/80 transition-colors hover:border-amber/50 hover:text-foreground"
+          >
+            Leave the forge
+          </button>
+          <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
+            {STATUS_LABEL[state.status]}
+          </span>
+        </div>
       </header>
 
-      {showForm && (
+      {showForm && prefsReady && (
         <TaskForm
           onStart={handleStart}
+          initialPrefs={initialPrefs}
           weekStart={weekStart}
           onWeekChange={handleWeekChange}
         />
@@ -161,13 +246,20 @@ export default function Home() {
                 {state.error}
               </p>
             )}
-            {state.interrupt && state.status === "interrupted" && (
+            {state.interrupt && state.status === "interrupted" && !heraldOpen && (
               <InterventionPanel interrupt={state.interrupt} onSubmit={intervene} />
             )}
             <DebateTimeline events={state.events} status={state.status} />
           </section>
         </div>
       )}
+
+      <HeraldModal
+        open={heraldOpen}
+        interrupt={state.interrupt}
+        onSubmit={intervene}
+        onDismiss={() => setDismissedInterrupt(state.interrupt)}
+      />
 
       <ForgedModal
         open={showForged}

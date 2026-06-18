@@ -15,11 +15,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from weekforge.api.app import create_app
+from weekforge.auth.tokens import issue_token
 
 VALID_SCHEDULE_JSON = (
     '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:00:00+00:00",'
     ' "label": "Write report", "task_id": "t1"}]'
 )
+TEST_AUTH_SECRET = "test-secret-key-with-32-bytes!!!"
 
 
 class MockCouncil:
@@ -68,12 +70,45 @@ def _anthropic_factory(converge: bool):
 
 
 @pytest.fixture
-def client(tmp_path):
-    app = create_app(
+def app(tmp_path):
+    return create_app(
         council=MockCouncil(),
         api_key="test-key",
         db_path=str(tmp_path / "api_test.db"),
+        auth_secret=TEST_AUTH_SECRET,
     )
+
+
+@pytest.fixture(autouse=True)
+def auth_secret_env(monkeypatch):
+    monkeypatch.setenv("WEEKFORGE_AUTH_SECRET", TEST_AUTH_SECRET)
+
+
+@pytest.fixture
+def token(app):
+    c = TestClient(app)
+    resp = c.post(
+        "/auth/signup",
+        json={"email": "test@b.com", "password": "pw", "display_name": "Tester"},
+    )
+    assert resp.status_code == 200
+    return resp.json()["token"]
+
+
+@pytest.fixture
+def unknown_user_token():
+    return issue_token("missing-user-id", TEST_AUTH_SECRET)
+
+
+@pytest.fixture
+def client(app, token):
+    c = TestClient(app)
+    c.headers.update({"Authorization": f"Bearer {token}"})
+    return c
+
+
+@pytest.fixture
+def anon_client(app):
     return TestClient(app)
 
 

@@ -22,6 +22,7 @@ def build_app() -> FastAPI:
     api_key = os.environ["ANTHROPIC_API_KEY"]
     db_path = os.environ.get("WEEKFORGE_DB_PATH", "weekforge_api.db")
     frontend_url = os.environ.get("WEEKFORGE_FRONTEND_URL", "http://localhost:3000")
+    auth_secret = os.environ["WEEKFORGE_AUTH_SECRET"]
     from weekforge.debate.debaters import DEFAULT_MODEL
     model = os.environ.get("WEEKFORGE_MODEL", DEFAULT_MODEL)
     arbiter_model = os.environ.get("WEEKFORGE_ARBITER_MODEL")
@@ -29,6 +30,7 @@ def build_app() -> FastAPI:
     return create_app(
         council=council, api_key=api_key, db_path=db_path,
         allow_origins=[frontend_url],
+        auth_secret=auth_secret,
     )
 
 

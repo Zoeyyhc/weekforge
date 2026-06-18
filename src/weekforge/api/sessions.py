@@ -16,6 +16,7 @@ from weekforge.api.schemas import StartDebateRequest
 @dataclass
 class Session:
     request: StartDebateRequest
+    user_id: str
     intervention: str | None = None
 
 
@@ -23,9 +24,9 @@ class SessionManager:
     def __init__(self) -> None:
         self._sessions: dict[str, Session] = {}
 
-    def create(self, request: StartDebateRequest) -> str:
+    def create(self, request: StartDebateRequest, user_id: str) -> str:
         thread_id = uuid4().hex
-        self._sessions[thread_id] = Session(request=request)
+        self._sessions[thread_id] = Session(request=request, user_id=user_id)
         return thread_id
 
     def get(self, thread_id: str) -> Session | None:

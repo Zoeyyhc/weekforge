@@ -8,8 +8,8 @@ def _req() -> StartDebateRequest:
 
 def test_create_returns_unique_thread_ids():
     mgr = SessionManager()
-    a = mgr.create(_req())
-    b = mgr.create(_req())
+    a = mgr.create(_req(), "u1")
+    b = mgr.create(_req(), "u1")
     assert a != b
     assert isinstance(a, str) and len(a) > 0
 
@@ -17,10 +17,11 @@ def test_create_returns_unique_thread_ids():
 def test_get_returns_session_with_request():
     mgr = SessionManager()
     req = _req()
-    tid = mgr.create(req)
+    tid = mgr.create(req, "u1")
     session = mgr.get(tid)
     assert session is not None
     assert session.request is req
+    assert session.user_id == "u1"
     assert session.intervention is None
 
 
@@ -31,7 +32,7 @@ def test_get_unknown_thread_returns_none():
 
 def test_set_and_pop_intervention():
     mgr = SessionManager()
-    tid = mgr.create(_req())
+    tid = mgr.create(_req(), "u1")
     mgr.set_intervention(tid, "Prioritise the report")
     assert mgr.pop_intervention(tid) == "Prioritise the report"
     # Second pop is None — interventions are consumed once.

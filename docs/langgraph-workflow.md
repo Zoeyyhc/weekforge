@@ -8,6 +8,7 @@ flowchart TD
     B[gather_proposals] --> C
     C[critique] --> D
     D{check_convergence}
+    HER[herald]
     E[human_interrupt]
     F[arbitrate]
     G{validate}
@@ -16,8 +17,9 @@ flowchart TD
 
     D -->|converged| F
     D -->|more rounds| B
-    D -->|stalled, human required| E
+    D -->|stalled, human required| HER
     D -->|stalled, auto| F
+    HER --> E
     E -->|human input| F
     F --> G
     G -->|valid| H
@@ -31,7 +33,7 @@ flowchart TD
     classDef entry  fill:#1e293b,stroke:#475569,color:#94a3b8
 
     class B,C,F crewai
-    class D,G haiku
+    class D,G,HER haiku
     class E,H infra
     class A,Z entry
 ```
@@ -43,7 +45,8 @@ flowchart TD
 | `gather_proposals` | DeadlineHawk / EnergyGuardian / FocusBatcher each propose a weekly schedule | CrewAI |
 | `critique` | Each debater critiques the others' proposals | CrewAI |
 | `check_convergence` | Judges if proposals have converged (yes/no); triggers human interrupt or auto-arbitration on stall | Claude Haiku |
-| `human_interrupt` | Pauses graph execution via `langgraph.interrupt()`, waits for user input over SSE | LangGraph |
+| `herald` | **The Herald** — distils each champion's proposal into one neutral sentence (`proposal_summaries`) so the user can rule without reading the whole debate. Runs **only on the stall→interrupt path** (a converged debate never invokes it). Summarises, never ranks/recommends (that would anchor the vote); best-effort — a malformed reply degrades to each proposal's first sentence so the vote never blocks | Claude Haiku |
+| `human_interrupt` | Pauses graph execution via `langgraph.interrupt()`, waits for user input over SSE. The interrupt payload carries `proposals` + the Herald's `proposal_summaries` | LangGraph |
 | `arbitrate` | Arbiter synthesises all proposals and critiques into a JSON time-block array in **local wall-clock time (no UTC offset)**; on a scoped retry it re-places only the blocks flagged broken | CrewAI |
 | `validate` | Parses the Arbiter's output, attaches the correct DST offset to its wall-clock times, then semantically validates (work window, no busy-block overlaps, daily focus cap, no cross-midnight, **within the now-aware schedulable week window**); on failure freezes the valid blocks and loops back to `arbitrate` to re-place only the broken ones, bounded by `max_validation_attempts` (default 3) | Claude Haiku |
 | `finalize` | Writes the Schedule to state. If validation never passed within the retry cap, delivers the last parseable best-effort schedule flagged `degraded` (with `validation_warnings`). SSE pushes the result to the frontend calendar view | LangGraph |
@@ -51,5 +54,5 @@ flowchart TD
 ## Color Key
 
 - **Purple** — CrewAI agents (debaters + Arbiter); model configured via `WEEKFORGE_MODEL`, defaults to Haiku
-- **Blue** — Claude Haiku utility calls (convergence check = 10 tokens; validate = JSON parsing)
+- **Blue** — Claude Haiku utility calls (convergence check = 10 tokens; herald = per-champion one-line summary, stall path only; validate = JSON parsing)
 - **Green** — LangGraph infrastructure (interrupt checkpoint + finalize terminal node)

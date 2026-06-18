@@ -201,6 +201,35 @@ def test_run_debate_yields_interrupt_event_when_graph_pauses(mock_council, mock_
     assert interrupt_events[0]["interrupt_reason"] == "Stalled"
 
 
+def test_run_debate_interrupt_forwards_herald_summaries(mock_council, mock_api_key, sample_tasks, sample_busy, sample_prefs):
+    """The Herald's per-champion distillation rides along in the interrupt event."""
+    from langgraph.types import Interrupt
+
+    summaries = {"DeadlineHawk": "Front-load the deadline."}
+    with patch("weekforge.debate.runner.build_graph") as mock_build:
+        mock_graph = MagicMock()
+        mock_build.return_value = mock_graph
+        mock_graph.stream.return_value = iter([
+            {"__interrupt__": (Interrupt(value={
+                "interrupt_reason": "Stalled",
+                "proposals": {"DeadlineHawk": "Front-load the deadline. Pack Monday."},
+                "proposal_summaries": summaries,
+            }),)},
+        ])
+
+        events = list(run_debate(
+            tasks=sample_tasks,
+            busy_blocks=sample_busy,
+            preferences=sample_prefs,
+            thread_id="herald-thread",
+            api_key=mock_api_key,
+            council=mock_council,
+        ))
+
+    interrupt_event = next(e for e in events if e["type"] == "interrupt")
+    assert interrupt_event["proposal_summaries"] == summaries
+
+
 def test_debate_result_shape():
     result: DebateResult = {
         "thread_id": "abc",

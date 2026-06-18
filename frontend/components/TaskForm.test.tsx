@@ -254,4 +254,22 @@ describe("TaskForm", () => {
     expect(onWeekChange).toHaveBeenCalledWith("2026-06-22");
     vi.useRealTimers();
   });
+
+  it("prefills the rhythm step from initialPrefs", async () => {
+    const user = userEvent.setup();
+    renderTaskForm({
+      initialPrefs: {
+        workdayStartHour: "7",
+        workdayEndHour: "15",
+        maxFocusMinutes: "240",
+      },
+    });
+
+    await advance(user);
+    await advance(user);
+
+    expect(screen.getByTestId("pref-start")).toHaveValue(7);
+    expect(screen.getByTestId("pref-end")).toHaveValue(15);
+    expect(screen.getByTestId("pref-focus")).toHaveValue(240);
+  });
 });

@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "WeekForge (Crucible) — a transparent multi-agent decision council."
 requires-python = ">=3.12"
 dependencies = [
+    "bcrypt>=4.0",
+    "pyjwt>=2.8",
     "pydantic>=2.7",
     "icalendar>=5.0",
     "langgraph>=0.2",

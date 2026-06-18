@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
+import { AuthProvider } from "@/lib/authContext";
 import "./globals.css";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
@@ -39,8 +40,11 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${fraunces.variable} ${hanken.variable} ${jetbrains.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>{children}</body>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
