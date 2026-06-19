@@ -78,6 +78,15 @@ def classify_blocks(
         if block.task_id is not None and block.task_id not in known_ids:
             rep.errors.append(f"Block '{block.label}': unknown task_id '{block.task_id}'")
 
+        day = local_start.date()
+        block_local_day.append(day)
+
+        # Rules 2/3/5/6 and the daily-cap count police FOCUS blocks only. Fixed
+        # commitments and soft buffers (task_id is None) may sit outside the work
+        # window, exceed the per-block cap, and overlap each other.
+        if block.task_id is None:
+            continue
+
         # Rule 2: one local day + inside the work window
         cross_day = local_start.date() != local_end.date()
         if cross_day:
@@ -128,8 +137,6 @@ def classify_blocks(
                 f"{preferences.max_focus_minutes_per_block}min single-focus cap"
             )
 
-        day = local_start.date()
-        block_local_day.append(day)
         minutes_per_day[day] = minutes_per_day.get(day, 0) + block.duration_minutes
 
     # Rule 4: daily focus cap (day-level)
@@ -144,7 +151,7 @@ def classify_blocks(
             )
 
     for rep, day in zip(reports, block_local_day):
-        if day in over_cap_days:
+        if rep.block.task_id is not None and day in over_cap_days:
             rep.day_reasons.append(
                 f"{day.strftime('%a %d %b')} is over the "
                 f"{preferences.max_focus_minutes_per_day}min focus cap"
