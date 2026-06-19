@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from weekforge.debate.validation import classify_blocks, compute_week_window, remaining_focus_budget
+from weekforge.debate.validation import (
+    block_plan,
+    classify_blocks,
+    compute_week_window,
+    remaining_focus_budget,
+)
 from weekforge.models import Preferences, Task, TimeBlock
 
 
@@ -17,7 +22,7 @@ def _block(label, start_h, end_h, *, task_id=None):
 
 
 def _prefs(**kw):
-    base = dict(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360)
+    base = dict(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360, max_focus_minutes_per_block=120)
     base.update(kw)
     return Preferences(**base)
 
@@ -31,9 +36,16 @@ def test_all_valid_report_is_ok_and_all_frozen():
 
 
 def test_one_broken_block_others_frozen():
-    good = _block("Good", 9, 11, task_id="t1")
-    bad = _block("Early", 7, 8, task_id="t1")  # before work window
-    report = classify_blocks([good, bad], [Task(id="t1", title="X", estimated_minutes=60)], [], _prefs())
+    # All-or-nothing freezing is per-task: a broken block in one task must not
+    # un-freeze a clean block belonging to a DIFFERENT task.
+    good = _block("Good", 9, 11, task_id="t1")  # 120min == t1 estimate
+    bad = _block("Early", 7, 8, task_id="t2")  # before work window
+    report = classify_blocks(
+        [good, bad],
+        [Task(id="t1", title="X", estimated_minutes=120), Task(id="t2", title="Y", estimated_minutes=60)],
+        [],
+        _prefs(),
+    )
     assert report.ok is False
     assert report.frozen == [good]
     assert [r.block for r in report.to_fix] == [bad]
@@ -76,11 +88,22 @@ def test_window_future_week_is_whole_week():
 
 
 def test_window_current_week_clamps_to_today():
-    # Picked week Mon 2026-06-15; today is Tue 2026-06-16 10:00 → starts today, not Monday.
+    # Picked week Mon 2026-06-15; now is Tue 2026-06-16 10:00 → starts today at the
+    # current moment (10:00), not Monday and not the 09:00 workday start (that hour
+    # is already past).
     prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
     ws, we = compute_week_window("2026-06-15", prefs, now=_now(2026, 6, 16, 10))
-    assert (ws.month, ws.day, ws.hour) == (6, 16, 9)                    # today 09:00
+    assert (ws.month, ws.day, ws.hour) == (6, 16, 10)                  # today, clamped to now
     assert (we.month, we.day) == (6, 21)                               # Sunday
+
+
+def test_window_today_clamps_start_to_now_not_workday_start():
+    # now is Fri 2026-06-19 17:30 local, workday 09:00–18:00. Today is still usable
+    # (before 18:00), but the window must NOT start at 09:00 — that is 8.5h in the
+    # past. The lower bound is the current moment, so a 10:00 block today is invalid.
+    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
+    ws, we = compute_week_window("2026-06-15", prefs, now=_now(2026, 6, 19, 17, 30))
+    assert (ws.month, ws.day, ws.hour, ws.minute) == (6, 19, 17, 30)
 
 
 def test_window_sunday_after_work_hours_is_empty():
@@ -115,9 +138,86 @@ def test_block_before_window_start_is_broken():
 def test_block_inside_window_is_ok():
     from zoneinfo import ZoneInfo
     tz = ZoneInfo("Australia/Sydney")
-    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
+    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney")
     window = (datetime(2026, 6, 16, 9, tzinfo=tz), datetime(2026, 6, 21, 18, tzinfo=tz))
     block = TimeBlock(start=datetime(2026, 6, 16, 9, tzinfo=tz),
                       end=datetime(2026, 6, 16, 11, tzinfo=tz), label="OK", task_id="t1")
     report = classify_blocks([block], [Task(id="t1", title="X", estimated_minutes=120)], [], prefs, window=window)
     assert report.ok is True
+
+
+# ── block_plan helper ────────────────────────────────────────────────────────
+
+def test_block_plan_single_when_within_cap():
+    assert block_plan(90, 90) == [90]
+    assert block_plan(45, 90) == [45]
+
+
+def test_block_plan_even_split():
+    assert block_plan(180, 90) == [90, 90]
+    assert block_plan(180, 45) == [45, 45, 45, 45]
+
+
+def test_block_plan_uneven_remainder_each_within_cap():
+    plan = block_plan(170, 45)
+    assert plan == [43, 43, 42, 42]
+    assert sum(plan) == 170
+    assert all(d <= 45 for d in plan)
+
+
+def test_block_plan_sums_to_estimate_and_respects_cap():
+    plan = block_plan(200, 90)
+    assert sum(plan) == 200
+    assert all(d <= 90 for d in plan)
+    assert len(plan) == 3
+
+
+# ── Rule 7: per-task conformance + all-or-nothing freezing ───────────────────
+
+def _tb(start_h, start_m, end_h, end_m, label, task_id):
+    return TimeBlock(
+        start=datetime(2026, 6, 16, start_h, start_m, tzinfo=timezone.utc),
+        end=datetime(2026, 6, 16, end_h, end_m, tzinfo=timezone.utc),
+        label=label, task_id=task_id,
+    )
+
+
+def test_conforming_split_task_all_frozen():
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [
+        _tb(9, 0, 10, 30, "Report (1/2)", "t1"),               # 90min
+        _tb(11, 0, 12, 30, "Report (2/2)", "t1"),              # 90min
+    ]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert all(r.frozen for r in report.reports)
+
+
+def test_over_placement_marks_whole_task_broken():
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [
+        _tb(9, 0, 10, 30, "Report (1/3)", "t1"),
+        _tb(11, 0, 12, 30, "Report (2/3)", "t1"),
+        _tb(13, 0, 14, 30, "Report (3/3)", "t1"),              # 3rd block > plan
+    ]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert all(not r.frozen for r in report.reports)
+    assert any("re-placed as a unit" in e for r in report.reports for e in r.errors)
+
+
+def test_under_placement_conforms_and_freezes():
+    # Only one of the two planned blocks placed -> sub-multiset, still clean.
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [_tb(9, 0, 10, 30, "Report (1/2)", "t1")]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert report.reports[0].frozen
+
+
+def test_one_broken_block_marks_whole_task_broken():
+    # 2 conforming-duration blocks but one is outside the work window -> all re-place.
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [
+        _tb(9, 0, 10, 30, "Report (1/2)", "t1"),               # valid
+        _tb(7, 0, 8, 30, "Report (2/2)", "t1"),                # before 09:00 window
+    ]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert all(not r.frozen for r in report.reports)

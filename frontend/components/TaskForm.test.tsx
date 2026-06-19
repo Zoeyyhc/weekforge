@@ -262,6 +262,7 @@ describe("TaskForm", () => {
         workdayStartHour: "7",
         workdayEndHour: "15",
         maxFocusMinutes: "240",
+        maxFocusPerBlock: "90",
       },
     });
 
@@ -271,5 +272,18 @@ describe("TaskForm", () => {
     expect(screen.getByTestId("pref-start")).toHaveValue(7);
     expect(screen.getByTestId("pref-end")).toHaveValue(15);
     expect(screen.getByTestId("pref-focus")).toHaveValue(240);
+  });
+
+  it("renders the per-session focus card and updates it", async () => {
+    const user = userEvent.setup();
+    renderTaskForm();
+
+    await advance(user);
+    await advance(user);
+
+    const input = screen.getByTestId("pref-focus-block") as HTMLInputElement;
+    expect(input).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "60" } });
+    expect(input.value).toBe("60");
   });
 });

@@ -220,6 +220,37 @@ def test_arbitrate_injects_frozen_blocks_and_budget(base_state):
     assert "broken" in ctx.lower()
 
 
+def test_scoped_repair_includes_task_ledger_and_transcript(base_state):
+    council = _CaptureCouncil()
+    frozen = [
+        TimeBlock(start=_utc(2026, 6, 20, 9), end=_utc(2026, 6, 20, 9, 45), label="Exam Prep (1/4)", task_id="t2"),
+        TimeBlock(start=_utc(2026, 6, 20, 10), end=_utc(2026, 6, 20, 10, 45), label="Exam Prep (2/4)", task_id="t2"),
+    ]
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Interview Prep", estimated_minutes=180, priority=1),
+            Task(id="t2", title="Exam Prep", estimated_minutes=180, priority=2),
+        ],
+        "frozen_blocks": frozen,
+        "validation_error": "BROKEN (re-place these only):\n  - Interview Prep: ...",
+        "round_number": 2,
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=45, timezone=None),
+        "transcript": [
+            {"round": 1, "speaker": "DeadlineHawk", "content": "front-load the exam", "event_type": "proposal"},
+        ],
+    }
+    make_arbitrate_node(council)(state)
+    ctx = council.last_context
+
+    assert "SCOPED REPAIR" in ctx
+    # Per-task ledger: Exam Prep has 2 of 4 placed; Interview Prep 0 of 4.
+    assert "Exam Prep" in ctx and "2 of 4" in ctx
+    assert "Interview Prep" in ctx and "0 of 4" in ctx
+    # Round transcript carried into scoped repair.
+    assert "front-load the exam" in ctx
+
+
 def test_arbitrate_first_pass_has_no_scoped_section(base_state):
     council = _CaptureCouncil()
     state = {**base_state, "round_number": 0}
@@ -269,7 +300,7 @@ def test_scoped_repair_converges_in_one_retry(base_state, mock_api_key):
         ],
         "busy_blocks": [],
         "preferences": Preferences(
-            workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600, timezone=None
+            workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=600, max_focus_minutes_per_block=120, timezone=None
         ),
         "round_number": 1,
         "validation_attempts": 0,
@@ -333,6 +364,9 @@ def test_validate_success_clears_stale_best_effort_metadata(base_state, mock_api
     )
     state = {
         **base_state,
+        # task estimated == block duration (60min) → no underscheduled warning
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=60, priority=1)],
+        "busy_blocks": [],
         "arbiter_output": valid_json_output,
         "round_number": 2,
         "best_effort_schedule": stale_best_effort,
@@ -454,7 +488,7 @@ def test_validate_freezes_valid_blocks_and_scopes_feedback(base_state, mock_api_
             Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
         ],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone=None),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone=None),
         "arbiter_output": two_blocks_json,
         "round_number": 1,
         "validation_attempts": 0,
@@ -874,7 +908,7 @@ def test_validate_merges_frozen_blocks_from_state(mock_api_key):
             Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2),
         ],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "frozen_blocks": [frozen],
@@ -918,7 +952,7 @@ def test_validate_drops_model_reemission_of_frozen(mock_api_key):
         "tasks": [Task(id="t1", title="W", estimated_minutes=120),
                   Task(id="t2", title="R", estimated_minutes=60)],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "frozen_blocks": [frozen],
@@ -940,6 +974,42 @@ def test_validate_drops_model_reemission_of_frozen(mock_api_key):
     assert write.start.astimezone(tz).hour == 9   # frozen version kept, model's 07:00 dropped
 
 
+def test_validate_drops_reemission_by_task_id_even_with_changed_label(mock_api_key):
+    # Frozen Exam Prep block. Model re-emits the same task_id with a DRIFTED label
+    # ((5/4)) and a new time. The task_id-keyed merge must drop it, not keep both.
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    frozen = TimeBlock(start=datetime(2026, 6, 20, 9, tzinfo=tz),
+                       end=datetime(2026, 6, 20, 9, 45, tzinfo=tz), label="Exam Prep (1/4)", task_id="t2")
+    model = (
+        '[{"start": "2026-06-20T11:00:00", "end": "2026-06-20T11:45:00",'
+        ' "label": "Exam Prep (5/4)", "task_id": "t2"}]'
+    )
+    state = {
+        "tasks": [Task(id="t2", title="Exam Prep", estimated_minutes=45)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=45, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "frozen_blocks": [frozen],
+        "arbiter_output": model, "round_number": 2, "validation_attempts": 1, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": "prev", "transcript": [],
+    }
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = model
+        mock_client.messages.create.return_value = mock_response
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    labels = [b.label for b in result["schedule"].blocks]
+    assert labels == ["Exam Prep (1/4)"]   # frozen kept; drifted re-emission dropped
+
+
 def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
     # Model emits 09:00+11:00 (summer offset) for a JUNE Sydney week (real offset +10).
     # After re-localization it must read as 09:00 local, NOT 08:00 → valid, no false "before work window".
@@ -952,7 +1022,7 @@ def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
     state = {
         "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1)],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "arbiter_output": wrong_offset_json,
@@ -1008,7 +1078,7 @@ def test_dst_window_scenario_converges(mock_api_key):
         "tasks": [Task(id="t1", title="Write report", estimated_minutes=120, priority=1),
                   Task(id="t2", title="Review PRs", estimated_minutes=60, priority=2)],
         "busy_blocks": [],
-        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney"),
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=120, timezone="Australia/Sydney"),
         "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
         "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
         "round_number": 1, "validation_attempts": 0, "max_validation_attempts": 3, "max_rounds": 3,
@@ -1046,3 +1116,180 @@ def test_dst_window_scenario_converges(mock_api_key):
     # Write report kept at 09:00 local (ZoneInfo-localized by _localize), nothing on the past Monday.
     t1 = next(b for b in r2["schedule"].blocks if b.label == "Write report")
     assert t1.start.astimezone(tz).day == 16 and t1.start.astimezone(tz).hour == 9
+
+
+# ── per-block cap in arbitrate context ──────────────────────────────────────
+
+def test_validate_success_warns_when_task_underscheduled(base_state, mock_api_key):
+    # task t1 estimated 180min; Arbiter returns one 90min block → underscheduled warning
+    one_block_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:30:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    state = {
+        **base_state,
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=180, priority=1)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=90),
+        "arbiter_output": one_block_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = one_block_json
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    assert result["degraded"] is False
+    assert result["validation_warnings"] is not None
+    assert "Write report" in result["validation_warnings"]
+    assert "180" in result["validation_warnings"]
+
+
+def test_validate_success_no_warning_when_fully_scheduled(base_state, mock_api_key):
+    # task t1 estimated 60min; Arbiter returns a 60min block → no warning
+    full_json = (
+        '[{"start": "2026-06-15T09:00:00+00:00", "end": "2026-06-15T10:00:00+00:00",'
+        ' "label": "Write report", "task_id": "t1"}]'
+    )
+    state = {
+        **base_state,
+        "tasks": [Task(id="t1", title="Write report", estimated_minutes=60, priority=1)],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=90),
+        "arbiter_output": full_json,
+        "round_number": 1,
+        "validation_attempts": 0,
+    }
+
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = full_json
+        mock_client.messages.create.return_value = mock_response
+
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    assert result["validation_warnings"] is None
+
+
+def test_arbitrate_context_states_code_owned_block_plan(base_state):
+    captured = {}
+
+    class RecordingCouncil:
+        def arbitrate(self, context: str) -> str:
+            captured["context"] = context
+            return "[]"
+
+    state = {
+        **base_state,
+        "tasks": [Task(id="t1", title="Exam Prep", estimated_minutes=180, priority=1)],
+        "proposals": {n: "p" for n in DEBATER_NAMES},
+        "critiques": {n: "c" for n in DEBATER_NAMES},
+        "round_number": 1,
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=45),
+    }
+    make_arbitrate_node(RecordingCouncil())(state)
+    ctx = captured["context"]
+
+    # 180min @ cap 45 -> exactly 4 blocks of 45min, code-owned.
+    assert "Exam Prep" in ctx
+    assert "4 blocks" in ctx
+    assert "45min" in ctx
+    assert "start times" in ctx.lower()
+
+
+def test_arbitrate_context_includes_per_block_cap_and_split_rule(base_state):
+    captured = {}
+
+    class RecordingCouncil:
+        def arbitrate(self, context: str) -> str:
+            captured["context"] = context
+            return "[]"
+
+    state = {
+        **base_state,
+        "proposals": {n: "p" for n in DEBATER_NAMES},
+        "critiques": {n: "c" for n in DEBATER_NAMES},
+        "round_number": 1,
+        "preferences": Preferences(),
+    }
+    make_arbitrate_node(RecordingCouncil())(state)
+    ctx = captured["context"]
+    assert "REQUIRED BLOCK PLAN" in ctx
+    assert "task_id" in ctx
+    assert "do not change the count or durations" in ctx.lower() or "choose only start times" in ctx.lower()
+
+
+# ── end-to-end: busy block + split tasks converge without drift ──────────────
+
+def test_busy_block_and_split_tasks_converge_without_drift(mock_api_key):
+    # Interview Prep + Exam Prep: 180min each, cap 45 -> 4×45 blocks each.
+    # Badminton: a fixed commitment 20:30–22:30 (out of window, over cap, task_id=null).
+    valid = (
+        '['
+        '{"start": "2026-06-19T09:00:00", "end": "2026-06-19T09:45:00", "label": "Interview Prep (1/4)", "task_id": "t1"},'
+        '{"start": "2026-06-19T10:00:00", "end": "2026-06-19T10:45:00", "label": "Interview Prep (2/4)", "task_id": "t1"},'
+        '{"start": "2026-06-19T11:00:00", "end": "2026-06-19T11:45:00", "label": "Interview Prep (3/4)", "task_id": "t1"},'
+        '{"start": "2026-06-19T12:00:00", "end": "2026-06-19T12:45:00", "label": "Interview Prep (4/4)", "task_id": "t1"},'
+        '{"start": "2026-06-20T09:00:00", "end": "2026-06-20T09:45:00", "label": "Exam Prep (1/4)", "task_id": "t2"},'
+        '{"start": "2026-06-20T10:00:00", "end": "2026-06-20T10:45:00", "label": "Exam Prep (2/4)", "task_id": "t2"},'
+        '{"start": "2026-06-20T11:00:00", "end": "2026-06-20T11:45:00", "label": "Exam Prep (3/4)", "task_id": "t2"},'
+        '{"start": "2026-06-20T12:00:00", "end": "2026-06-20T12:45:00", "label": "Exam Prep (4/4)", "task_id": "t2"},'
+        '{"start": "2026-06-19T20:30:00", "end": "2026-06-19T22:30:00", "label": "Badminton", "task_id": null}'
+        ']'
+    )
+
+    class _Council:
+        def arbitrate(self, context):
+            return valid
+
+    state = {
+        "tasks": [
+            Task(id="t1", title="Interview Prep", estimated_minutes=180, priority=1),
+            Task(id="t2", title="Exam Prep", estimated_minutes=180, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360, max_focus_minutes_per_block=45, timezone=None),
+        "window_start": _utc(2026, 6, 19, 9),
+        "window_end": _utc(2026, 6, 21, 18),
+        "round_number": 1, "validation_attempts": 0, "max_validation_attempts": 3, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": None, "transcript": [],
+    }
+
+    def _echo(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        raw = content.split("Arbiter output:\n", 1)[1].split("\n\nExtract", 1)[0].strip()
+        resp = MagicMock()
+        resp.content[0].text = raw
+        return resp
+
+    arbitrate = make_arbitrate_node(_Council())
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        client = MagicMock()
+        client.messages.create.side_effect = _echo
+        MockAnthropic.return_value = client
+        validate = make_validate_node(mock_api_key)
+
+        state = {**state, **arbitrate(state)}
+        result = validate(state)
+
+    assert result["schedule"] is not None        # converges first pass, no retry
+    labels = [b.label for b in result["schedule"].blocks]
+    assert "Badminton" in labels                  # null block kept, not rejected
+    interview = [l for l in labels if l.startswith("Interview Prep")]
+    exam = [l for l in labels if l.startswith("Exam Prep")]
+    assert len(interview) == 4
+    assert len(exam) == 4
+    # No drifted labels like (5/4)/(8/4): every split label is within the 4-block plan.
+    valid_suffixes = {"(1/4)", "(2/4)", "(3/4)", "(4/4)"}
+    assert all(l.split()[-1] in valid_suffixes for l in interview + exam)

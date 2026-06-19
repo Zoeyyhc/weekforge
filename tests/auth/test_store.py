@@ -55,3 +55,19 @@ def test_preferences_round_trip(store):
     loaded = store.get_preferences(user.id)
     assert loaded.workday_start_hour == 8
     assert loaded.max_focus_minutes_per_day == 300
+
+
+def test_old_preferences_without_per_block_loads_with_default(store):
+    user = store.create_user("c@d.com", "pw", "Cy")
+    # Simulate a row written before the field existed.
+    legacy_json = (
+        '{"workday_start_hour": 9, "workday_end_hour": 18, '
+        '"max_focus_minutes_per_day": 360, "timezone": null}'
+    )
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE users SET preferences = ? WHERE id = ?", (legacy_json, user.id)
+        )
+    prefs = store.get_preferences(user.id)
+    assert prefs is not None
+    assert prefs.max_focus_minutes_per_block == 90

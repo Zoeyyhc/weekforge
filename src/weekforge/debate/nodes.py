@@ -14,8 +14,10 @@ from weekforge.debate.debaters import Council
 from weekforge.debate.validation import (
     ValidationReport,
     _localize,
+    block_plan,
     classify_blocks,
     remaining_focus_budget,
+    underscheduled_tasks,
     validate_blocks,
 )
 from weekforge.debate.state import DEBATER_NAMES, DebateEvent, DebateState
@@ -66,11 +68,59 @@ def _fmt_prefs(state: DebateState) -> str:
     tz_clause = f" ({p.timezone})" if p.timezone else " (timezone unknown — assume UTC)"
     return (
         f"Work hours {p.workday_start_hour}:00–{p.workday_end_hour}:00 LOCAL TIME{tz_clause}, "
-        f"max focus {p.max_focus_minutes_per_day}min/day. "
+        f"max focus {p.max_focus_minutes_per_day}min/day, "
+        f"max single focus block {p.max_focus_minutes_per_block}min. "
         f"All scheduled blocks MUST fall within this local time window. "
         f"Output datetimes as LOCAL wall-clock time in {p.timezone or 'UTC'} "
         f"(e.g. 2026-06-16T09:00:00) with NO timezone offset and NO trailing 'Z'."
     )
+
+
+def _fmt_task_plans(state: DebateState) -> str:
+    """Code-owned split plan per task: exact block count + durations + labels.
+
+    The council chooses only each block's start time; it must not change how many
+    blocks a task has or their durations.
+    """
+    cap = state["preferences"].max_focus_minutes_per_block
+    lines = []
+    for t in state["tasks"]:
+        plan = block_plan(t.estimated_minutes, cap)
+        if len(plan) == 1:
+            lines.append(f"- {t.title} (task_id {t.id}): one block of {plan[0]}min.")
+        else:
+            n = len(plan)
+            durs = ", ".join(f"{d}min" for d in plan)
+            lines.append(
+                f"- {t.title} (task_id {t.id}): EXACTLY {n} blocks of [{durs}], "
+                f"labelled '{t.title} (1/{n})' … '{t.title} ({n}/{n})'. "
+                f"Choose only their start times — do not change the count or durations."
+            )
+    return "\n".join(lines) if lines else "No tasks."
+
+
+def _fmt_task_ledger(frozen_blocks, tasks, preferences) -> str:
+    """Authoritative per-task accounting: blocks placed (frozen) vs the code-owned
+    plan. Tells the Arbiter exactly how many more blocks each task still needs, so
+    it never re-derives (and over-shoots) the split count across rounds.
+    """
+    cap = preferences.max_focus_minutes_per_block
+    placed: dict[str, int] = {}
+    for b in frozen_blocks:
+        if b.task_id is not None:
+            placed[b.task_id] = placed.get(b.task_id, 0) + 1
+    lines = []
+    for t in tasks:
+        total = len(block_plan(t.estimated_minutes, cap))
+        got = placed.get(t.id, 0)
+        if got >= total:
+            lines.append(f"- {t.title} (task_id {t.id}): {got} of {total} blocks placed → COMPLETE, add none.")
+        else:
+            lines.append(
+                f"- {t.title} (task_id {t.id}): {got} of {total} blocks placed → place {total - got} more "
+                f"(labelled up to ({total}/{total}))."
+            )
+    return "\n".join(lines)
 
 
 def _fmt_window(state: DebateState) -> str:
@@ -336,6 +386,8 @@ def make_arbitrate_node(council: Council):
                 f"- {day.strftime('%a %d %b')}: {mins}min left"
                 for day, mins in sorted(budget.items())
             )
+            ledger = _fmt_task_ledger(frozen, state["tasks"], state["preferences"])
+            p = state["preferences"]
             scoped = (
                 "\n\nSCOPED REPAIR — the previous schedule was mostly valid. "
                 "The blocks below are ALREADY FINAL. Do NOT move, resize, or drop them; "
@@ -343,6 +395,14 @@ def make_arbitrate_node(council: Council):
                 f"{occupied}\n"
                 "Remaining daily focus budget AFTER these fixed blocks (do not exceed):\n"
                 f"{budget_lines}\n"
+                "PER-TASK PLACEMENT LEDGER (authoritative — do not exceed the planned block count):\n"
+                f"{ledger}\n"
+                "ALL CONSTRAINTS STILL APPLY: "
+                f"work window {p.workday_start_hour:02d}:00–{p.workday_end_hour:02d}:00 local, "
+                f"max focus {p.max_focus_minutes_per_day}min/day, "
+                f"max single block {p.max_focus_minutes_per_block}min, no crossing midnight.\n"
+                "Debate so far (for context):\n"
+                f"{_fmt_transcript_tail(state)}\n"
                 "Output JSON for ONLY the tasks flagged as broken in the validation feedback above. "
                 "Do NOT output the fixed blocks listed here — the system re-attaches them automatically. "
                 "Do not place anything that overlaps them, and stay within the remaining daily budget."
@@ -360,7 +420,10 @@ def make_arbitrate_node(council: Council):
             f"- Every block's START local hour must be at or after the workday start hour above.\n"
             f"- Every block's END local hour must be at or before the workday end hour above.\n"
             f"- No block may cross midnight: a block's start and end MUST fall on the same local date.\n"
-            f"- When the workday window reaches midnight, end blocks at 23:59 local — never 00:00 of the next day.\n\n"
+            f"- When the workday window reaches midnight, end blocks at 23:59 local — never 00:00 of the next day.\n"
+            f"- Each task is pre-split by the system into a fixed number of blocks with fixed durations "
+            f"(see REQUIRED BLOCK PLAN). Reproduce that count and those durations exactly; choose only start times.\n\n"
+            f"REQUIRED BLOCK PLAN (code-owned — do not change counts or durations):\n{_fmt_task_plans(state)}\n\n"
             f"Proposals:\n{proposals_text}\n\n"
             f"Critiques:\n{critiques_text}"
             f"{human_note}{prev_error}{scoped}"
@@ -415,9 +478,19 @@ def make_validate_node(api_key: str):
             ]
             frozen_in = state.get("frozen_blocks") or []
             if frozen_in:
-                frozen_labels = {b.label for b in frozen_in}
-                # Frozen blocks are authoritative: drop any model re-emission of them.
-                blocks = frozen_in + [b for b in blocks if b.label not in frozen_labels]
+                # Frozen blocks are authoritative. A task freezes all-or-nothing
+                # (validation Rule 7), so a frozen task_id means EVERY block of that
+                # task is final — drop any model re-emission carrying it, regardless
+                # of its (possibly drifted) label. Null-task blocks dedupe by label.
+                frozen_task_ids = {b.task_id for b in frozen_in if b.task_id is not None}
+                frozen_labels = {b.label for b in frozen_in if b.task_id is None}
+
+                def _is_frozen_reemission(b: TimeBlock) -> bool:
+                    if b.task_id is not None:
+                        return b.task_id in frozen_task_ids
+                    return b.label in frozen_labels
+
+                blocks = frozen_in + [b for b in blocks if not _is_frozen_reemission(b)]
             report = classify_blocks(
                 blocks,
                 state["tasks"],
@@ -447,11 +520,19 @@ def make_validate_node(api_key: str):
                     "validation_attempts": state.get("validation_attempts", 0) + 1,
                     "transcript": [event],
                 }
+            short = underscheduled_tasks(blocks, state["tasks"])
+            warning = None
+            if short:
+                titles = {t.id: t.title for t in state["tasks"]}
+                warning = "Under-scheduled tasks (the council could not fit all estimated time): " + "; ".join(
+                    f"{titles.get(tid, tid)}: only {got} of {est}min scheduled"
+                    for tid, (got, est) in sorted(short.items())
+                )
             return {
                 "schedule": Schedule(blocks=blocks),
                 "validation_error": None,
                 "degraded": False,
-                "validation_warnings": None,
+                "validation_warnings": warning,
                 "best_effort_schedule": None,
                 "frozen_blocks": [],
             }

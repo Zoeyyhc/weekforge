@@ -303,6 +303,7 @@ describe("Home page", () => {
       workday_start_hour: 8,
       workday_end_hour: 16,
       max_focus_minutes_per_day: 240,
+      max_focus_minutes_per_block: 90,
       timezone: "Australia/Melbourne",
     });
   });

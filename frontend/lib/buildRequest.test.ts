@@ -26,6 +26,7 @@ const prefs: PrefsDraft = {
   workdayStartHour: "9",
   workdayEndHour: "18",
   maxFocusMinutes: "360",
+  maxFocusPerBlock: "90",
 };
 const weekStart = "2026-06-15";
 
@@ -58,6 +59,7 @@ describe("buildRequest", () => {
       workday_start_hour: 9,
       workday_end_hour: 18,
       max_focus_minutes_per_day: 360,
+      max_focus_minutes_per_block: 90,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   });
@@ -153,7 +155,7 @@ describe("buildRequest — deadline", () => {
         },
       ],
       [],
-      { workdayStartHour: "9", workdayEndHour: "18", maxFocusMinutes: "360" },
+      { workdayStartHour: "9", workdayEndHour: "18", maxFocusMinutes: "360", maxFocusPerBlock: "90" },
       "2026-06-22",
     );
     const deadline = new Date(req.tasks[0].deadline!);
@@ -174,6 +176,19 @@ describe("buildRequest — preferredDays", () => {
   it("omits preferred_days when preferredDays is empty", () => {
     const req = buildRequest([makeDraft({ preferredDays: [] })], noBlocks, prefs, weekStart);
     expect(req.tasks[0].preferred_days).toBeUndefined();
+  });
+});
+
+describe("buildRequest — maxFocusPerBlock", () => {
+  it("maps maxFocusPerBlock to max_focus_minutes_per_block", () => {
+    const blockPrefs = {
+      workdayStartHour: "9",
+      workdayEndHour: "18",
+      maxFocusMinutes: "360",
+      maxFocusPerBlock: "90",
+    };
+    const req = buildRequest([], [], blockPrefs as any, "2026-06-15");
+    expect(req.preferences?.max_focus_minutes_per_block).toBe(90);
   });
 });
 

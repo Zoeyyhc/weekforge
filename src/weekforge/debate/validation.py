@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -78,6 +80,15 @@ def classify_blocks(
         if block.task_id is not None and block.task_id not in known_ids:
             rep.errors.append(f"Block '{block.label}': unknown task_id '{block.task_id}'")
 
+        day = local_start.date()
+        block_local_day.append(day)
+
+        # Rules 2/3/5/6 and the daily-cap count police FOCUS blocks only. Fixed
+        # commitments and soft buffers (task_id is None) may sit outside the work
+        # window, exceed the per-block cap, and overlap each other.
+        if block.task_id is None:
+            continue
+
         # Rule 2: one local day + inside the work window
         cross_day = local_start.date() != local_end.date()
         if cross_day:
@@ -121,8 +132,13 @@ def classify_blocks(
                     f"({ws.strftime('%a %d %b %H:%M')}–{we.strftime('%a %d %b %H:%M')} local)"
                 )
 
-        day = local_start.date()
-        block_local_day.append(day)
+        # Rule 6: single block must not exceed the per-block focus cap
+        if block.duration_minutes > preferences.max_focus_minutes_per_block:
+            rep.errors.append(
+                f"Block '{block.label}': {block.duration_minutes}min exceeds "
+                f"{preferences.max_focus_minutes_per_block}min single-focus cap"
+            )
+
         minutes_per_day[day] = minutes_per_day.get(day, 0) + block.duration_minutes
 
     # Rule 4: daily focus cap (day-level)
@@ -137,11 +153,38 @@ def classify_blocks(
             )
 
     for rep, day in zip(reports, block_local_day):
-        if day in over_cap_days:
+        if rep.block.task_id is not None and day in over_cap_days:
             rep.day_reasons.append(
                 f"{day.strftime('%a %d %b')} is over the "
                 f"{preferences.max_focus_minutes_per_day}min focus cap"
             )
+
+    # Rule 7: per-task conformance + all-or-nothing freezing.
+    # A task's placed durations must be a SUB-multiset of its code-owned plan:
+    # over-placement / wrong durations = drift (the (5/4)/(8/4) bug) -> reject.
+    # Under-placement is allowed here (the non-blocking underscheduled warning
+    # handles it, preserving termination). A task freezes only as a whole: if it
+    # drifts OR any of its blocks is individually broken, every block re-places.
+    tasks_by_id = {t.id: t for t in tasks}
+    reports_by_task: dict[str, list[BlockReport]] = {}
+    for rep in reports:
+        tid = rep.block.task_id
+        if tid is not None and tid in tasks_by_id:
+            reports_by_task.setdefault(tid, []).append(rep)
+
+    for tid, reps in reports_by_task.items():
+        task = tasks_by_id[tid]
+        plan = block_plan(task.estimated_minutes, preferences.max_focus_minutes_per_block)
+        drift = Counter(r.block.duration_minutes for r in reps) - Counter(plan)
+        any_broken = any(r.errors or r.day_reasons for r in reps)
+        if drift or any_broken:
+            plan_desc = sorted(plan, reverse=True)
+            for r in reps:
+                if not (r.errors or r.day_reasons):
+                    r.errors.append(
+                        f"Block '{r.block.label}': task '{tid}' must be re-placed as a unit "
+                        f"(plan: {plan_desc} min blocks)"
+                    )
 
     return ValidationReport(reports=reports, day_errors=day_errors)
 
@@ -159,6 +202,41 @@ def validate_blocks(
         errors.extend(rep.errors)
     errors.extend(report.day_errors)
     return errors
+
+
+def block_plan(estimated_minutes: int, cap: int) -> list[int]:
+    """Per-task focus-block durations: each <= cap, summing to the estimate, as
+    even as possible. Returns [estimated_minutes] when it already fits in one block.
+
+    Code owns the split count and durations; the council only chooses start times.
+    """
+    if estimated_minutes <= cap:
+        return [estimated_minutes]
+    n = math.ceil(estimated_minutes / cap)
+    base = estimated_minutes // n
+    remainder = estimated_minutes % n
+    return [base + 1 if i < remainder else base for i in range(n)]
+
+
+def underscheduled_tasks(
+    blocks: list[TimeBlock],
+    tasks: list[Task],
+) -> dict[str, tuple[int, int]]:
+    """Per task_id: (scheduled_minutes, estimated_minutes) where scheduled < estimated.
+
+    Used for a non-blocking warning: splitting an over-long task can silently
+    drop work, so we surface any task whose scheduled minutes fall short.
+    """
+    scheduled: dict[str, int] = {}
+    for b in blocks:
+        if b.task_id is not None:
+            scheduled[b.task_id] = scheduled.get(b.task_id, 0) + b.duration_minutes
+    short: dict[str, tuple[int, int]] = {}
+    for t in tasks:
+        got = scheduled.get(t.id, 0)
+        if got < t.estimated_minutes:
+            short[t.id] = (got, t.estimated_minutes)
+    return short
 
 
 def remaining_focus_budget(
@@ -201,5 +279,9 @@ def compute_week_window(
     end_t = time(hour=23, minute=59) if preferences.workday_end_hour >= 24 else time(hour=preferences.workday_end_hour)
 
     window_start = datetime.combine(window_start_day, start_t, tzinfo=tz)
+    # On the current day, never schedule before *now* — clamping only to the day
+    # (start_t) would leave the morning, already in the past, schedulable.
+    if window_start_day == today:
+        window_start = max(window_start, now_local)
     window_end = datetime.combine(picked_sunday, end_t, tzinfo=tz)
     return window_start, window_end
