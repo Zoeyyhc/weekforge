@@ -103,11 +103,24 @@ Stateless — derivable any time from `task.estimated_minutes` + the per-block c
 **2. Per-task conformance — new rule in `classify_blocks`.**
 
 After the per-block rules, aggregate blocks by `task_id`. For each known task,
-compare the multiset of its blocks' `duration_minutes` to `block_plan(task)`.
-On any mismatch (wrong count, wrong durations), mark **all** of that task's
-blocks broken (mirroring how an over-cap day marks all its blocks `to_fix`).
-A task is therefore **all-or-nothing**: either every planned block is present and
-correct (and the task freezes as a unit), or the whole task re-places.
+the multiset of its blocks' `duration_minutes` must be a **sub-multiset** of
+`block_plan(task)`:
+
+- **Over-placement or wrong durations = drift** (e.g. 5 blocks for a 4-block
+  plan, a 60-min block when the plan has only 45s) → the task **fails
+  conformance**; mark all of its blocks broken.
+- **Under-placement = shortfall** (fewer planned blocks placed, sum below
+  estimate) → the task still **conforms**. This is the physically-unschedulable
+  case; forcing a retry here would risk the termination red line, so it is
+  surfaced through the existing non-blocking `underscheduled_tasks` warning
+  instead (unchanged behaviour).
+
+**All-or-nothing freezing:** a task freezes as a unit only when none of its
+blocks is individually broken (rules 1–6) *and* it does not drift. If either
+holds, mark **every** block of that task broken so the whole task re-places
+together (mirroring how an over-cap day marks all its blocks `to_fix`). This
+keeps a task fully-frozen or fully-broken, which is what makes the task-keyed
+merge below sound.
 
 **3. Freeze merge keyed by `task_id` — `nodes.py` validate node.**
 
@@ -121,12 +134,14 @@ all-or-nothing per task, change the merge to:
 
 This removes the label-collision fragility at its root.
 
-**4. Deterministic labels.**
+**4. Labels.**
 
-Labels follow the plan: `f"{title} ({i}/{N})"` for `i in 1..N` (just `title`
-when `N == 1`). The Arbiter is instructed to use exactly these; the conformance
-rule + task-keyed merge mean a wrong label can never persist into the final
-schedule.
+The Arbiter is instructed to label split blocks `f"{title} ({i}/{N})"` for
+`i in 1..N` (just `title` when `N == 1`). Structural correctness no longer
+depends on labels — conformance is by **count + duration**, so the drift that
+produced `(5/4)`/`(8/4)` is caught by the count check regardless of how the
+block is labelled. Labels are therefore presentational; code does not enforce
+them (YAGNI).
 
 **5. Arbiter prompt + scoped-repair context — `nodes.py`.**
 
@@ -159,8 +174,12 @@ path are untouched.
 **Phase 2:**
 - `block_plan`: `90, cap 90 -> [90]`; `180, cap 90 -> [90,90]`;
   `170, cap 45 -> [43,43,42,42]` (each `<= cap`, sums to estimate).
-- Conformance: a task with the wrong block count (e.g. 5 blocks for a 4-block
-  plan) marks **all** its blocks broken; a task matching its plan freezes.
+- Conformance: a task with too many blocks (e.g. 5 for a 4-block plan) or a
+  duration not in its plan marks **all** its blocks broken; a task whose blocks
+  are a sub-multiset of its plan conforms; an under-placed task conforms and is
+  reported by the existing non-blocking warning, not failed.
+- All-or-nothing: a task with one block outside the window has **all** its
+  blocks marked to re-place together.
 - Freeze merge: a model re-emission carrying a frozen `task_id` is dropped; a
   null-task block still dedupes by label.
 - Arbitrate context includes the per-task plan and (in scoped repair) the ledger
