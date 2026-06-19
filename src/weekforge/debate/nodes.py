@@ -99,6 +99,30 @@ def _fmt_task_plans(state: DebateState) -> str:
     return "\n".join(lines) if lines else "No tasks."
 
 
+def _fmt_task_ledger(frozen_blocks, tasks, preferences) -> str:
+    """Authoritative per-task accounting: blocks placed (frozen) vs the code-owned
+    plan. Tells the Arbiter exactly how many more blocks each task still needs, so
+    it never re-derives (and over-shoots) the split count across rounds.
+    """
+    cap = preferences.max_focus_minutes_per_block
+    placed: dict[str, int] = {}
+    for b in frozen_blocks:
+        if b.task_id is not None:
+            placed[b.task_id] = placed.get(b.task_id, 0) + 1
+    lines = []
+    for t in tasks:
+        total = len(block_plan(t.estimated_minutes, cap))
+        got = placed.get(t.id, 0)
+        if got >= total:
+            lines.append(f"- {t.title} (task_id {t.id}): {got} of {total} blocks placed → COMPLETE, add none.")
+        else:
+            lines.append(
+                f"- {t.title} (task_id {t.id}): {got} of {total} blocks placed → place {total - got} more "
+                f"(labelled up to ({total}/{total}))."
+            )
+    return "\n".join(lines)
+
+
 def _fmt_window(state: DebateState) -> str:
     ws = state.get("window_start")
     we = state.get("window_end")
@@ -362,6 +386,8 @@ def make_arbitrate_node(council: Council):
                 f"- {day.strftime('%a %d %b')}: {mins}min left"
                 for day, mins in sorted(budget.items())
             )
+            ledger = _fmt_task_ledger(frozen, state["tasks"], state["preferences"])
+            p = state["preferences"]
             scoped = (
                 "\n\nSCOPED REPAIR — the previous schedule was mostly valid. "
                 "The blocks below are ALREADY FINAL. Do NOT move, resize, or drop them; "
@@ -369,6 +395,14 @@ def make_arbitrate_node(council: Council):
                 f"{occupied}\n"
                 "Remaining daily focus budget AFTER these fixed blocks (do not exceed):\n"
                 f"{budget_lines}\n"
+                "PER-TASK PLACEMENT LEDGER (authoritative — do not exceed the planned block count):\n"
+                f"{ledger}\n"
+                "ALL CONSTRAINTS STILL APPLY: "
+                f"work window {p.workday_start_hour:02d}:00–{p.workday_end_hour:02d}:00 local, "
+                f"max focus {p.max_focus_minutes_per_day}min/day, "
+                f"max single block {p.max_focus_minutes_per_block}min, no crossing midnight.\n"
+                "Debate so far (for context):\n"
+                f"{_fmt_transcript_tail(state)}\n"
                 "Output JSON for ONLY the tasks flagged as broken in the validation feedback above. "
                 "Do NOT output the fixed blocks listed here — the system re-attaches them automatically. "
                 "Do not place anything that overlaps them, and stay within the remaining daily budget."

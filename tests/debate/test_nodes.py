@@ -220,6 +220,37 @@ def test_arbitrate_injects_frozen_blocks_and_budget(base_state):
     assert "broken" in ctx.lower()
 
 
+def test_scoped_repair_includes_task_ledger_and_transcript(base_state):
+    council = _CaptureCouncil()
+    frozen = [
+        TimeBlock(start=_utc(2026, 6, 20, 9), end=_utc(2026, 6, 20, 9, 45), label="Exam Prep (1/4)", task_id="t2"),
+        TimeBlock(start=_utc(2026, 6, 20, 10), end=_utc(2026, 6, 20, 10, 45), label="Exam Prep (2/4)", task_id="t2"),
+    ]
+    state = {
+        **base_state,
+        "tasks": [
+            Task(id="t1", title="Interview Prep", estimated_minutes=180, priority=1),
+            Task(id="t2", title="Exam Prep", estimated_minutes=180, priority=2),
+        ],
+        "frozen_blocks": frozen,
+        "validation_error": "BROKEN (re-place these only):\n  - Interview Prep: ...",
+        "round_number": 2,
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=45, timezone=None),
+        "transcript": [
+            {"round": 1, "speaker": "DeadlineHawk", "content": "front-load the exam", "event_type": "proposal"},
+        ],
+    }
+    make_arbitrate_node(council)(state)
+    ctx = council.last_context
+
+    assert "SCOPED REPAIR" in ctx
+    # Per-task ledger: Exam Prep has 2 of 4 placed; Interview Prep 0 of 4.
+    assert "Exam Prep" in ctx and "2 of 4" in ctx
+    assert "Interview Prep" in ctx and "0 of 4" in ctx
+    # Round transcript carried into scoped repair.
+    assert "front-load the exam" in ctx
+
+
 def test_arbitrate_first_pass_has_no_scoped_section(base_state):
     council = _CaptureCouncil()
     state = {**base_state, "round_number": 0}
