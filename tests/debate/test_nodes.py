@@ -1226,3 +1226,70 @@ def test_arbitrate_context_includes_per_block_cap_and_split_rule(base_state):
     assert "REQUIRED BLOCK PLAN" in ctx
     assert "task_id" in ctx
     assert "do not change the count or durations" in ctx.lower() or "choose only start times" in ctx.lower()
+
+
+# ── end-to-end: busy block + split tasks converge without drift ──────────────
+
+def test_busy_block_and_split_tasks_converge_without_drift(mock_api_key):
+    # Interview Prep + Exam Prep: 180min each, cap 45 -> 4×45 blocks each.
+    # Badminton: a fixed commitment 20:30–22:30 (out of window, over cap, task_id=null).
+    valid = (
+        '['
+        '{"start": "2026-06-19T09:00:00", "end": "2026-06-19T09:45:00", "label": "Interview Prep (1/4)", "task_id": "t1"},'
+        '{"start": "2026-06-19T10:00:00", "end": "2026-06-19T10:45:00", "label": "Interview Prep (2/4)", "task_id": "t1"},'
+        '{"start": "2026-06-19T11:00:00", "end": "2026-06-19T11:45:00", "label": "Interview Prep (3/4)", "task_id": "t1"},'
+        '{"start": "2026-06-19T12:00:00", "end": "2026-06-19T12:45:00", "label": "Interview Prep (4/4)", "task_id": "t1"},'
+        '{"start": "2026-06-20T09:00:00", "end": "2026-06-20T09:45:00", "label": "Exam Prep (1/4)", "task_id": "t2"},'
+        '{"start": "2026-06-20T10:00:00", "end": "2026-06-20T10:45:00", "label": "Exam Prep (2/4)", "task_id": "t2"},'
+        '{"start": "2026-06-20T11:00:00", "end": "2026-06-20T11:45:00", "label": "Exam Prep (3/4)", "task_id": "t2"},'
+        '{"start": "2026-06-20T12:00:00", "end": "2026-06-20T12:45:00", "label": "Exam Prep (4/4)", "task_id": "t2"},'
+        '{"start": "2026-06-19T20:30:00", "end": "2026-06-19T22:30:00", "label": "Badminton", "task_id": null}'
+        ']'
+    )
+
+    class _Council:
+        def arbitrate(self, context):
+            return valid
+
+    state = {
+        "tasks": [
+            Task(id="t1", title="Interview Prep", estimated_minutes=180, priority=1),
+            Task(id="t2", title="Exam Prep", estimated_minutes=180, priority=2),
+        ],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360, max_focus_minutes_per_block=45, timezone=None),
+        "window_start": _utc(2026, 6, 19, 9),
+        "window_end": _utc(2026, 6, 21, 18),
+        "round_number": 1, "validation_attempts": 0, "max_validation_attempts": 3, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": None, "transcript": [],
+    }
+
+    def _echo(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        raw = content.split("Arbiter output:\n", 1)[1].split("\n\nExtract", 1)[0].strip()
+        resp = MagicMock()
+        resp.content[0].text = raw
+        return resp
+
+    arbitrate = make_arbitrate_node(_Council())
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        client = MagicMock()
+        client.messages.create.side_effect = _echo
+        MockAnthropic.return_value = client
+        validate = make_validate_node(mock_api_key)
+
+        state = {**state, **arbitrate(state)}
+        result = validate(state)
+
+    assert result["schedule"] is not None        # converges first pass, no retry
+    labels = [b.label for b in result["schedule"].blocks]
+    assert "Badminton" in labels                  # null block kept, not rejected
+    interview = [l for l in labels if l.startswith("Interview Prep")]
+    exam = [l for l in labels if l.startswith("Exam Prep")]
+    assert len(interview) == 4
+    assert len(exam) == 4
+    # No drifted labels like (5/4)/(8/4): every split label is within the 4-block plan.
+    valid_suffixes = {"(1/4)", "(2/4)", "(3/4)", "(4/4)"}
+    assert all(l.split()[-1] in valid_suffixes for l in interview + exam)
