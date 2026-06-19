@@ -943,6 +943,42 @@ def test_validate_drops_model_reemission_of_frozen(mock_api_key):
     assert write.start.astimezone(tz).hour == 9   # frozen version kept, model's 07:00 dropped
 
 
+def test_validate_drops_reemission_by_task_id_even_with_changed_label(mock_api_key):
+    # Frozen Exam Prep block. Model re-emits the same task_id with a DRIFTED label
+    # ((5/4)) and a new time. The task_id-keyed merge must drop it, not keep both.
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Australia/Sydney")
+    frozen = TimeBlock(start=datetime(2026, 6, 20, 9, tzinfo=tz),
+                       end=datetime(2026, 6, 20, 9, 45, tzinfo=tz), label="Exam Prep (1/4)", task_id="t2")
+    model = (
+        '[{"start": "2026-06-20T11:00:00", "end": "2026-06-20T11:45:00",'
+        ' "label": "Exam Prep (5/4)", "task_id": "t2"}]'
+    )
+    state = {
+        "tasks": [Task(id="t2", title="Exam Prep", estimated_minutes=45)],
+        "busy_blocks": [],
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=45, timezone="Australia/Sydney"),
+        "window_start": datetime(2026, 6, 16, 9, tzinfo=tz),
+        "window_end": datetime(2026, 6, 21, 18, tzinfo=tz),
+        "frozen_blocks": [frozen],
+        "arbiter_output": model, "round_number": 2, "validation_attempts": 1, "max_rounds": 3,
+        "proposals": {}, "critiques": {}, "converged": False,
+        "interrupt_reason": None, "human_input": None,
+        "schedule": None, "validation_error": "prev", "transcript": [],
+    }
+    with patch("weekforge.debate.nodes.Anthropic") as MockAnthropic:
+        mock_client = MagicMock()
+        MockAnthropic.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content[0].text = model
+        mock_client.messages.create.return_value = mock_response
+        result = make_validate_node(mock_api_key)(state)
+
+    assert result["schedule"] is not None
+    labels = [b.label for b in result["schedule"].blocks]
+    assert labels == ["Exam Prep (1/4)"]   # frozen kept; drifted re-emission dropped
+
+
 def test_validate_relocalizes_wrong_offset_to_correct_local(mock_api_key):
     # Model emits 09:00+11:00 (summer offset) for a JUNE Sydney week (real offset +10).
     # After re-localization it must read as 09:00 local, NOT 08:00 → valid, no false "before work window".

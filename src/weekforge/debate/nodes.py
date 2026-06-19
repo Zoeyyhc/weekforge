@@ -420,9 +420,19 @@ def make_validate_node(api_key: str):
             ]
             frozen_in = state.get("frozen_blocks") or []
             if frozen_in:
-                frozen_labels = {b.label for b in frozen_in}
-                # Frozen blocks are authoritative: drop any model re-emission of them.
-                blocks = frozen_in + [b for b in blocks if b.label not in frozen_labels]
+                # Frozen blocks are authoritative. A task freezes all-or-nothing
+                # (validation Rule 7), so a frozen task_id means EVERY block of that
+                # task is final — drop any model re-emission carrying it, regardless
+                # of its (possibly drifted) label. Null-task blocks dedupe by label.
+                frozen_task_ids = {b.task_id for b in frozen_in if b.task_id is not None}
+                frozen_labels = {b.label for b in frozen_in if b.task_id is None}
+
+                def _is_frozen_reemission(b: TimeBlock) -> bool:
+                    if b.task_id is not None:
+                        return b.task_id in frozen_task_ids
+                    return b.label in frozen_labels
+
+                blocks = frozen_in + [b for b in blocks if not _is_frozen_reemission(b)]
             report = classify_blocks(
                 blocks,
                 state["tasks"],
