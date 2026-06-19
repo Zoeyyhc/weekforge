@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from weekforge.debate.validation import classify_blocks, compute_week_window, remaining_focus_budget
+from weekforge.debate.validation import (
+    block_plan,
+    classify_blocks,
+    compute_week_window,
+    remaining_focus_budget,
+)
 from weekforge.models import Preferences, Task, TimeBlock
 
 
@@ -121,3 +126,29 @@ def test_block_inside_window_is_ok():
                       end=datetime(2026, 6, 16, 11, tzinfo=tz), label="OK", task_id="t1")
     report = classify_blocks([block], [Task(id="t1", title="X", estimated_minutes=120)], [], prefs, window=window)
     assert report.ok is True
+
+
+# ── block_plan helper ────────────────────────────────────────────────────────
+
+def test_block_plan_single_when_within_cap():
+    assert block_plan(90, 90) == [90]
+    assert block_plan(45, 90) == [45]
+
+
+def test_block_plan_even_split():
+    assert block_plan(180, 90) == [90, 90]
+    assert block_plan(180, 45) == [45, 45, 45, 45]
+
+
+def test_block_plan_uneven_remainder_each_within_cap():
+    plan = block_plan(170, 45)
+    assert plan == [43, 43, 42, 42]
+    assert sum(plan) == 170
+    assert all(d <= 45 for d in plan)
+
+
+def test_block_plan_sums_to_estimate_and_respects_cap():
+    plan = block_plan(200, 90)
+    assert sum(plan) == 200
+    assert all(d <= 90 for d in plan)
+    assert len(plan) == 3

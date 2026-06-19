@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -173,6 +174,20 @@ def validate_blocks(
         errors.extend(rep.errors)
     errors.extend(report.day_errors)
     return errors
+
+
+def block_plan(estimated_minutes: int, cap: int) -> list[int]:
+    """Per-task focus-block durations: each <= cap, summing to the estimate, as
+    even as possible. Returns [estimated_minutes] when it already fits in one block.
+
+    Code owns the split count and durations; the council only chooses start times.
+    """
+    if estimated_minutes <= cap:
+        return [estimated_minutes]
+    n = math.ceil(estimated_minutes / cap)
+    base = estimated_minutes // n
+    remainder = estimated_minutes % n
+    return [base + 1 if i < remainder else base for i in range(n)]
 
 
 def underscheduled_tasks(
