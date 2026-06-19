@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -157,6 +158,33 @@ def classify_blocks(
                 f"{day.strftime('%a %d %b')} is over the "
                 f"{preferences.max_focus_minutes_per_day}min focus cap"
             )
+
+    # Rule 7: per-task conformance + all-or-nothing freezing.
+    # A task's placed durations must be a SUB-multiset of its code-owned plan:
+    # over-placement / wrong durations = drift (the (5/4)/(8/4) bug) -> reject.
+    # Under-placement is allowed here (the non-blocking underscheduled warning
+    # handles it, preserving termination). A task freezes only as a whole: if it
+    # drifts OR any of its blocks is individually broken, every block re-places.
+    tasks_by_id = {t.id: t for t in tasks}
+    reports_by_task: dict[str, list[BlockReport]] = {}
+    for rep in reports:
+        tid = rep.block.task_id
+        if tid is not None and tid in tasks_by_id:
+            reports_by_task.setdefault(tid, []).append(rep)
+
+    for tid, reps in reports_by_task.items():
+        task = tasks_by_id[tid]
+        plan = block_plan(task.estimated_minutes, preferences.max_focus_minutes_per_block)
+        drift = Counter(r.block.duration_minutes for r in reps) - Counter(plan)
+        any_broken = any(r.errors or r.day_reasons for r in reps)
+        if drift or any_broken:
+            plan_desc = sorted(plan, reverse=True)
+            for r in reps:
+                if not (r.errors or r.day_reasons):
+                    r.errors.append(
+                        f"Block '{r.block.label}': task '{tid}' must be re-placed as a unit "
+                        f"(plan: {plan_desc} min blocks)"
+                    )
 
     return ValidationReport(reports=reports, day_errors=day_errors)
 

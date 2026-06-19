@@ -36,9 +36,16 @@ def test_all_valid_report_is_ok_and_all_frozen():
 
 
 def test_one_broken_block_others_frozen():
-    good = _block("Good", 9, 11, task_id="t1")
-    bad = _block("Early", 7, 8, task_id="t1")  # before work window
-    report = classify_blocks([good, bad], [Task(id="t1", title="X", estimated_minutes=60)], [], _prefs())
+    # All-or-nothing freezing is per-task: a broken block in one task must not
+    # un-freeze a clean block belonging to a DIFFERENT task.
+    good = _block("Good", 9, 11, task_id="t1")  # 120min == t1 estimate
+    bad = _block("Early", 7, 8, task_id="t2")  # before work window
+    report = classify_blocks(
+        [good, bad],
+        [Task(id="t1", title="X", estimated_minutes=120), Task(id="t2", title="Y", estimated_minutes=60)],
+        [],
+        _prefs(),
+    )
     assert report.ok is False
     assert report.frozen == [good]
     assert [r.block for r in report.to_fix] == [bad]
@@ -152,3 +159,54 @@ def test_block_plan_sums_to_estimate_and_respects_cap():
     assert sum(plan) == 200
     assert all(d <= 90 for d in plan)
     assert len(plan) == 3
+
+
+# ── Rule 7: per-task conformance + all-or-nothing freezing ───────────────────
+
+def _tb(start_h, start_m, end_h, end_m, label, task_id):
+    return TimeBlock(
+        start=datetime(2026, 6, 16, start_h, start_m, tzinfo=timezone.utc),
+        end=datetime(2026, 6, 16, end_h, end_m, tzinfo=timezone.utc),
+        label=label, task_id=task_id,
+    )
+
+
+def test_conforming_split_task_all_frozen():
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [
+        _tb(9, 0, 10, 30, "Report (1/2)", "t1"),               # 90min
+        _tb(11, 0, 12, 30, "Report (2/2)", "t1"),              # 90min
+    ]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert all(r.frozen for r in report.reports)
+
+
+def test_over_placement_marks_whole_task_broken():
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [
+        _tb(9, 0, 10, 30, "Report (1/3)", "t1"),
+        _tb(11, 0, 12, 30, "Report (2/3)", "t1"),
+        _tb(13, 0, 14, 30, "Report (3/3)", "t1"),              # 3rd block > plan
+    ]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert all(not r.frozen for r in report.reports)
+    assert any("re-placed as a unit" in e for r in report.reports for e in r.errors)
+
+
+def test_under_placement_conforms_and_freezes():
+    # Only one of the two planned blocks placed -> sub-multiset, still clean.
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [_tb(9, 0, 10, 30, "Report (1/2)", "t1")]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert report.reports[0].frozen
+
+
+def test_one_broken_block_marks_whole_task_broken():
+    # 2 conforming-duration blocks but one is outside the work window -> all re-place.
+    prefs = _prefs(max_focus_minutes_per_block=90)              # plan [90,90]
+    blocks = [
+        _tb(9, 0, 10, 30, "Report (1/2)", "t1"),               # valid
+        _tb(7, 0, 8, 30, "Report (2/2)", "t1"),                # before 09:00 window
+    ]
+    report = classify_blocks(blocks, [Task(id="t1", title="Report", estimated_minutes=180)], [], prefs)
+    assert all(not r.frozen for r in report.reports)

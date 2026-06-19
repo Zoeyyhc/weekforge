@@ -242,7 +242,7 @@ def test_meeting_daily_max_exactly_passes():
 # ── All rules satisfied ──────────────────────────────────────────────────────
 
 def test_all_valid_returns_empty_list():
-    blocks = [_block("Deep work", 9, 11, task_id="t1")]
+    blocks = [_block("Deep work", 9, 10, task_id="t1")]  # 60min == _task estimate
     tasks = [_task("t1")]
     busy = [_block("Standup", 8, 9)]
     prefs = Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_day=360, max_focus_minutes_per_block=120)
