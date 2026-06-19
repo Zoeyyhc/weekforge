@@ -88,11 +88,22 @@ def test_window_future_week_is_whole_week():
 
 
 def test_window_current_week_clamps_to_today():
-    # Picked week Mon 2026-06-15; today is Tue 2026-06-16 10:00 → starts today, not Monday.
+    # Picked week Mon 2026-06-15; now is Tue 2026-06-16 10:00 → starts today at the
+    # current moment (10:00), not Monday and not the 09:00 workday start (that hour
+    # is already past).
     prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
     ws, we = compute_week_window("2026-06-15", prefs, now=_now(2026, 6, 16, 10))
-    assert (ws.month, ws.day, ws.hour) == (6, 16, 9)                    # today 09:00
+    assert (ws.month, ws.day, ws.hour) == (6, 16, 10)                  # today, clamped to now
     assert (we.month, we.day) == (6, 21)                               # Sunday
+
+
+def test_window_today_clamps_start_to_now_not_workday_start():
+    # now is Fri 2026-06-19 17:30 local, workday 09:00–18:00. Today is still usable
+    # (before 18:00), but the window must NOT start at 09:00 — that is 8.5h in the
+    # past. The lower bound is the current moment, so a 10:00 block today is invalid.
+    prefs = Preferences(workday_start_hour=9, workday_end_hour=18, timezone="Australia/Sydney")
+    ws, we = compute_week_window("2026-06-15", prefs, now=_now(2026, 6, 19, 17, 30))
+    assert (ws.month, ws.day, ws.hour, ws.minute) == (6, 19, 17, 30)
 
 
 def test_window_sunday_after_work_hours_is_empty():

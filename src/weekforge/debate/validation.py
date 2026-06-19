@@ -279,5 +279,9 @@ def compute_week_window(
     end_t = time(hour=23, minute=59) if preferences.workday_end_hour >= 24 else time(hour=preferences.workday_end_hour)
 
     window_start = datetime.combine(window_start_day, start_t, tzinfo=tz)
+    # On the current day, never schedule before *now* — clamping only to the day
+    # (start_t) would leave the morning, already in the past, schedulable.
+    if window_start_day == today:
+        window_start = max(window_start, now_local)
     window_end = datetime.combine(picked_sunday, end_t, tzinfo=tz)
     return window_start, window_end
