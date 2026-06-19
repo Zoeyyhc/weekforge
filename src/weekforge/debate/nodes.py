@@ -14,6 +14,7 @@ from weekforge.debate.debaters import Council
 from weekforge.debate.validation import (
     ValidationReport,
     _localize,
+    block_plan,
     classify_blocks,
     remaining_focus_budget,
     underscheduled_tasks,
@@ -73,6 +74,29 @@ def _fmt_prefs(state: DebateState) -> str:
         f"Output datetimes as LOCAL wall-clock time in {p.timezone or 'UTC'} "
         f"(e.g. 2026-06-16T09:00:00) with NO timezone offset and NO trailing 'Z'."
     )
+
+
+def _fmt_task_plans(state: DebateState) -> str:
+    """Code-owned split plan per task: exact block count + durations + labels.
+
+    The council chooses only each block's start time; it must not change how many
+    blocks a task has or their durations.
+    """
+    cap = state["preferences"].max_focus_minutes_per_block
+    lines = []
+    for t in state["tasks"]:
+        plan = block_plan(t.estimated_minutes, cap)
+        if len(plan) == 1:
+            lines.append(f"- {t.title} (task_id {t.id}): one block of {plan[0]}min.")
+        else:
+            n = len(plan)
+            durs = ", ".join(f"{d}min" for d in plan)
+            lines.append(
+                f"- {t.title} (task_id {t.id}): EXACTLY {n} blocks of [{durs}], "
+                f"labelled '{t.title} (1/{n})' … '{t.title} ({n}/{n})'. "
+                f"Choose only their start times — do not change the count or durations."
+            )
+    return "\n".join(lines) if lines else "No tasks."
 
 
 def _fmt_window(state: DebateState) -> str:
@@ -363,9 +387,9 @@ def make_arbitrate_node(council: Council):
             f"- Every block's END local hour must be at or before the workday end hour above.\n"
             f"- No block may cross midnight: a block's start and end MUST fall on the same local date.\n"
             f"- When the workday window reaches midnight, end blocks at 23:59 local — never 00:00 of the next day.\n"
-            f"- No single block may exceed {state['preferences'].max_focus_minutes_per_block} minutes. "
-            f"Split a longer task into multiple blocks sharing the same task_id, each with a "
-            f"distinct label (e.g. 'Report (1/2)', 'Report (2/2)').\n\n"
+            f"- Each task is pre-split by the system into a fixed number of blocks with fixed durations "
+            f"(see REQUIRED BLOCK PLAN). Reproduce that count and those durations exactly; choose only start times.\n\n"
+            f"REQUIRED BLOCK PLAN (code-owned — do not change counts or durations):\n{_fmt_task_plans(state)}\n\n"
             f"Proposals:\n{proposals_text}\n\n"
             f"Critiques:\n{critiques_text}"
             f"{human_note}{prev_error}{scoped}"

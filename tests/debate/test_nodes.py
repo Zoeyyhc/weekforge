@@ -1149,6 +1149,32 @@ def test_validate_success_no_warning_when_fully_scheduled(base_state, mock_api_k
     assert result["validation_warnings"] is None
 
 
+def test_arbitrate_context_states_code_owned_block_plan(base_state):
+    captured = {}
+
+    class RecordingCouncil:
+        def arbitrate(self, context: str) -> str:
+            captured["context"] = context
+            return "[]"
+
+    state = {
+        **base_state,
+        "tasks": [Task(id="t1", title="Exam Prep", estimated_minutes=180, priority=1)],
+        "proposals": {n: "p" for n in DEBATER_NAMES},
+        "critiques": {n: "c" for n in DEBATER_NAMES},
+        "round_number": 1,
+        "preferences": Preferences(workday_start_hour=9, workday_end_hour=18, max_focus_minutes_per_block=45),
+    }
+    make_arbitrate_node(RecordingCouncil())(state)
+    ctx = captured["context"]
+
+    # 180min @ cap 45 -> exactly 4 blocks of 45min, code-owned.
+    assert "Exam Prep" in ctx
+    assert "4 blocks" in ctx
+    assert "45min" in ctx
+    assert "start times" in ctx.lower()
+
+
 def test_arbitrate_context_includes_per_block_cap_and_split_rule(base_state):
     captured = {}
 
@@ -1162,11 +1188,10 @@ def test_arbitrate_context_includes_per_block_cap_and_split_rule(base_state):
         "proposals": {n: "p" for n in DEBATER_NAMES},
         "critiques": {n: "c" for n in DEBATER_NAMES},
         "round_number": 1,
-        "preferences": Preferences(),  # default has max_focus_minutes_per_block == 90
+        "preferences": Preferences(),
     }
-
     make_arbitrate_node(RecordingCouncil())(state)
     ctx = captured["context"]
-
-    assert "single focus" in ctx.lower() or "90min" in ctx
-    assert "task_id" in ctx and "distinct label" in ctx.lower()
+    assert "REQUIRED BLOCK PLAN" in ctx
+    assert "task_id" in ctx
+    assert "do not change the count or durations" in ctx.lower() or "choose only start times" in ctx.lower()
